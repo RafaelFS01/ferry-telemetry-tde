@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package ferryboat;
+
+// Serviço de telemetria e tráfego marítimo do Ferry-Boat Salvador-Itaparica
+service FerryTelemetry {
+  // RPC Unária para transmissão de telemetria do nó embarcado para o nó central
+  rpc EnviarTelemetria (TelemetriaRequest) returns (TelemetriaResponse);
+}
+
+// Payload de telemetria emitido a cada 5 segundos pelo barco
+message TelemetriaRequest {
+  string message_id = 1;      // Identificador único (UUIDv4) para garantia de idempotência
+  double latitude = 2;        // Coordenada geográfica (latitude em graus decimais)
+  double longitude = 3;       // Coordenada geográfica (longitude em graus decimais)
+  int32 passageiros = 4;      // Quantidade de passageiros a bordo (faixa de 0 a 1000)
+  int64 timestamp_coleta = 5; // Epoch em milissegundos registrado no barco (origem)
+}
+
+// Resposta retornada pelo nó central ao nó embarcado
+message TelemetriaResponse {
+  bool sucesso = 1;           // Indica se a requisição foi aceita com êxito
+  string mensagem = 2;        // Mensagem descritiva do resultado da operação
+  bool duplicado = 3;         // Sinaliza descarte por idempotência (chave message_id já existente)
+  int64 processado_em = 4;    // Epoch em milissegundos registrado na persistência/despacho
+}
