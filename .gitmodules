@@ -1,0 +1,6 @@
+[submodule "ferry-boat"]
+	path = ferry-boat
+	url = https://github.com/RafaelFS01/ferry-boat.git
+[submodule "ferry-central"]
+	path = ferry-central
+	url = https://github.com/RafaelFS01/ferry-central.git
