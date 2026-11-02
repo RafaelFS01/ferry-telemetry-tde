@@ -21,7 +21,7 @@ Para otimizar a transmissão em links marítimos restritos e de baixa largura de
 
 O projeto visa também demonstrar **transparência de acesso poliglota**, integrando um nó cliente embarcado desenvolvido em **TypeScript (NestJS)** com um nó servidor de ingestão construído em **Python (assíncrono com grpc.aio)**. Para mitigar os impactos de retransmissões do buffer após períodos de partição, cada pacote de telemetria conterá um identificador universal único (**UUIDv4**), viabilizando garantias estritas de **idempotência** na camada de persistência em PostgreSQL.
 
-Como módulos de apoio e validação operacional, serão concebidas duas interfaces em **Next.js 14**: o Painel do Capitão a bordo e o Dashboard Náutico da Central em terra. Toda a solução será projetada para execução conteinerizada via **Docker Compose** em ambiente de desenvolvimento e arquitetura elástica em nuvem **AWS**. Para viabilizar a absorção de picos de carga e assegurar alta disponibilidade da Central, a infraestrutura implementará escalonamento horizontal automatizado das instâncias de ingestão (`ferry-central`): o provisionamento da malha elástica (VPC, instâncias EC2, Auto Scaling Groups, Load Balancers gRPC L7 e RDS Multi-AZ) será orquestrado via **Terraform**, enquanto a padronização, configuração de ambiente e deploy dinâmico das novas réplicas de ingestão serão gerenciados via **Ansible**.
+Como módulos de apoio e validação operacional, serão concebidas duas interfaces em **Next.js 16**: o Painel do Capitão a bordo e o Dashboard Náutico da Central em terra. Toda a solução será projetada para execução conteinerizada via **Docker Compose** em ambiente de desenvolvimento e arquitetura elástica em nuvem **AWS**. Para viabilizar a absorção de picos de carga com máxima eficiência de custos e alta disponibilidade da Central, a infraestrutura implementará computação serverless elástica em contêineres via **Amazon ECS e AWS Fargate**: o provisionamento da malha elástica (VPC, Cluster ECS, tarefas Fargate com auto-scaling por demanda, Load Balancers gRPC L7, tópicos SNS, filas SQS, instância EC2 de simulação do Barco e RDS PostgreSQL 18 Single-AZ com backups contínuos no S3 e PITR) será orquestrado 100% via **Terraform**, enquanto a esteira de integração e entrega contínua (CI/CD) para build das imagens e deploy dinâmico das novas revisões de tarefas será gerenciada via **GitHub Actions** e **Amazon ECR**.
 
 ---
 
@@ -29,10 +29,10 @@ Como módulos de apoio e validação operacional, serão concebidas duas interfa
 
 Para garantir a modularidade e paralelismo no desenvolvimento do sistema distribuído, as responsabilidades foram alocadas conforme as especialidades técnicas:
 
-- **Álex Lima (Engenharia de Software Embarcado):** Modelagem do nó cliente (NestJS), geração dos stubs gRPC em TypeScript, implementação do simulador GPS, controle de deadlines/keepalive e mecanismo de retenção local (Buffer FIFO em memória + dump em disco).
-- **Otavio Costa (Engenharia de Ingestão e Dados):** Concepção do nó central em Python (grpc.aio), implementação do servicer RPC unário, pipeline de validação de schemas Protobuf v3, controle de idempotência transacional via UUIDv4 e mapeamento objeto-relacional (Prisma/PostgreSQL).
-- **Rafael Figueiredo (Infraestrutura em Nuvem e IaC):** Desenho da arquitetura AWS, escrita dos manifestos declarativos em Terraform (VPC, Subnets Públicas/Privadas, Security Groups encadeados, ALB L7 com suporte a gRPC, Auto Scaling Group e RDS Multi-AZ).
-- **Wesley Rios (Gerência de Configuração, DevOps e Interfaces):** Automação de deploy e configuração de instâncias via Ansible, orquestração local via Docker Compose, configuração dos proxies reversos Nginx e desenvolvimento dos painéis de supervisão em Next.js 14 (Painel do Capitão e Dashboard Náutico com Leaflet).
+- **Álex Lima (Engenharia de Software Embarcado):** Modelagem do nó cliente (NestJS 12 / Node 24), geração dos stubs gRPC em TypeScript, implementação do simulador GPS, controle de deadlines/keepalive e mecanismo de retenção local (Buffer FIFO em memória + dump em disco).
+- **Otavio Costa (Engenharia de Ingestão e Dados):** Concepção do nó central em Python 3.14 (grpc.aio), implementação do servicer RPC unário, pipeline de validação de schemas Protobuf v3, controle de idempotência transacional via UUIDv4 e mapeamento objeto-relacional assíncrono (SQLAlchemy 2.0 / PostgreSQL 18 com asyncpg).
+- **Rafael Figueiredo (Infraestrutura em Nuvem e IaC):** Desenho da arquitetura AWS, escrita dos manifestos declarativos em Terraform ~> 1.17 (VPC, Subnets Públicas/Privadas, Security Groups encadeados, ALB L7 com suporte a gRPC, Cluster Amazon ECS com tarefas e serviços AWS Fargate, tópicos SNS, filas SQS, instância EC2 para simulação do Barco e RDS PostgreSQL 18 Single-AZ com PITR).
+- **Wesley Rios (DevOps, CI/CD e Interfaces):** Automação da esteira de CI/CD via GitHub Actions (build multi-stage, push para Amazon ECR e rolling updates automatizados no ECS Fargate), orquestração local via Docker Compose, configuração dos proxies reversos Nginx e desenvolvimento dos painéis de supervisão em Next.js 16 com TailwindCSS v4 (Painel do Capitão e Dashboard Náutico com Leaflet).
 
 ---
 
@@ -40,7 +40,7 @@ Para garantir a modularidade e paralelismo no desenvolvimento do sistema distrib
 
 ### 2.1. Objetivo Geral
 
-Projetar, implementar e validar uma malha de comunicação distribuída de alta performance, fortemente tipada, resiliente e horizontalmente escalável utilizando gRPC sobre HTTP/2, conectando nós de naturezas e linguagens distintas (TypeScript/Node.js e Python) para a transmissão contínua de telemetria de missão crítica, com capacidade de expansão elástica do nó receptor em terra via Infraestrutura como Código (IaC) e Gerência de Configuração.
+Projetar, implementar e validar uma malha de comunicação distribuída de alta performance, fortemente tipada, resiliente e horizontalmente escalável utilizando gRPC sobre HTTP/2, conectando nós de naturezas e linguagens distintas (TypeScript/Node.js e Python) para a transmissão contínua de telemetria de missão crítica, com capacidade de expansão elástica serverless do nó receptor em terra via Infraestrutura como Código (Terraform) e contêineres gerenciados (AWS Fargate).
 
 ### 2.2. Escopo Principal
 
@@ -81,7 +81,7 @@ Componentes complementares planejados para contextualizar, simular o fluxo náut
 - **Interfaces Web de Demonstração:**
   - **Painel do Barco (Porta 3000):** Ajuste de taxa de simulação, controle de lotação e acompanhamento em tempo real do estado da fila/buffer local.
   - **Dashboard da Central (Porta 3001):** Renderização cartográfica da embarcação em trânsito com base nos dados processados pelo receptor gRPC.
-- **Ambiente de Execução e Nuvem:** Orquestração completa em contêineres via Docker Compose para reprodução local e planos de infraestrutura como código (Terraform/Ansible) para validação em instâncias AWS EC2/RDS.
+- **Ambiente de Execução e Nuvem:** Orquestração completa em contêineres via Docker Compose para reprodução local e planos de infraestrutura como código (Terraform) para validação elástica em tarefas AWS Fargate, EC2 dedicada para o Barco e RDS PostgreSQL 18 Single-AZ com PITR.
 
 ### 2.4. Critérios de Sucesso e Validação
 
@@ -91,7 +91,7 @@ Componentes complementares planejados para contextualizar, simular o fluxo náut
 | **Adesão ao Contrato Protobuf** | O pipeline deve rejeitar estritamente qualquer mensagem que viole os tipos, campos ou regras estabelecidas no arquivo `.proto` canônico. |
 | **Resiliência a Partições** | Ao interromper intencionalmente a conectividade da Central, o nó embarcado deverá reter as coletas sem degradação do processo e descarregá-las integralmente via gRPC assim que o serviço for restabelecido. |
 | **Idempotência de Entrega** | O reenvio de uma telemetria com identificador idêntico (`message_id`) deve ser reconhecido pelo servidor com flag de duplicação ativada, sem duplicação de tuplas no banco de dados. |
-| **Escalabilidade Horizontal da Central** | Ao disparar o aumento de demanda ou acionar planos de contingência via Terraform/Ansible, novas instâncias do nó central (`ferry-central`) deverão ser provisionadas e configuradas automaticamente, integrando-se ao balanceador gRPC e absorvendo o tráfego sem degradação ou perda de telemetrias. |
+| **Escalabilidade Horizontal da Central** | Ao disparar o aumento de demanda ou acionar planos de contingência via métricas CloudWatch, novas tarefas serverless do nó central (`ferry-central`) no AWS Fargate deverão ser instanciadas e integradas automaticamente ao Target Group do balanceador gRPC, absorvendo o tráfego sem degradação ou perda de telemetrias. |
 
 ---
 
@@ -112,8 +112,8 @@ ferry-telemetry-tde/
 │   │   ├── buffer/                ---> Camada de tolerância a quedas do canal gRPC
 │   │   │   └── fifo-buffer.service.ts ---> Fila em memória (5.000 itens) + backup em disco
 │   │   ├── simulator/             ---> Gerador da carga útil da telemetria (5s)
-│   │   └── main.ts                ---> Inicialização do runtime NestJS 10
-│   └── frontend/                  ---> [Apoio] Painel tátil do capitão (Next.js 14)
+│   │   └── main.ts                ---> Inicialização do runtime NestJS 12 (Node 24)
+│   └── frontend/                  ---> [Apoio] Painel tátil do capitão (Next.js 16)
 │
 ├── ferry-central/                 ---> [NÓ SERVIDOR CENTRAL (B)]
 │   ├── src/
@@ -122,12 +122,12 @@ ferry-telemetry-tde/
 │   │   │   ├── service.py         ---> Implementação do FerryTelemetryServicer
 │   │   │   └── idempotency.py     ---> Validação de UUIDv4 e controle de duplicação
 │   │   ├── proto/                 ---> Stubs gerados em Python (_pb2.py e _pb2_grpc.py)
-│   │   └── database/              ---> Camada de persistência (Prisma / PostgreSQL 16)
-│   ├── prisma/                    ---> Schema de dados e migrações SQL (coluna STORED)
-│   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 14)
+│   │   └── database/              ---> Camada de persistência (SQLAlchemy 2.0 / PostgreSQL 18)
+│   ├── alembic/                   ---> Configurações de migração relacional assíncrona (Alembic)
+│   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 16)
 │
 ├── docker/                        ---> Configurações de proxies de borda Nginx
-├── terraform/                     ---> IaC para provisionamento de VPC, EC2s, RDS e SGs
+├── terraform/                     ---> IaC para VPC, ECS Fargate, ALB gRPC, RDS e SQS
 └── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
 ```
 
@@ -140,15 +140,92 @@ ferry-telemetry-tde/
 
 A colaboração e a rastreabilidade do código-fonte seguem padrões rigorosos de governança de software distribuído:
 
-- **Estratégia de Branching (GitHub Flow Adaptado):**
-  - `main`: Ramo estável, protegido contra push direto, reservado apenas para código homologado e pronto para implantação.
-  - `develop`: Ramo de integração contínua para mesclagem de novas funcionalidades antes da homologação.
-  - `feature/<nome-da-funcionalidade>`: Branches efêmeras criadas a partir de `develop` para desenvolvimento isolado de componentes (ex.: `feature/grpc-keepalive`, `feature/fifo-disk-buffer`).
-  - `fix/<nome-do-bug>`: Correções pontuais de falhas de comunicação ou persistência.
-- **Política de Commits:** Adoção estrita da convenção *Conventional Commits* (e.g., `feat:`, `fix:`, `docs:`, `perf:`, `refactor:`, `chore:`) assegurando geração automatizada de changelogs e semântica histórica.
+- **Estratégia de Branching (Git Flow Integrado ao Jira):**
+  - `main`: Ramo estável e protegido contra push direto. Apenas código homologado entra via Pull Request aprovado.
+  - `feature/SCRUM-<ID>-<kebab-case>`: Branches de funcionalidades vinculadas obrigatoriamente a uma issue do Jira (ex.: `feature/SCRUM-6-contrato-protobuf`).
+  - `fix/SCRUM-<ID>-<kebab-case>`: Correções de bugs rastreadas por tickets do Jira.
+  - `docs/SCRUM-<ID>-<kebab-case>`: Documentações estruturais e runbooks operacionais.
+- **Política de Commits (Conventional Commits Rastreável):** Adoção estrita de Conventional Commits contendo a chave do ticket Jira no escopo, permitindo sincronização automática:
+  - Formato: `<tipo>(SCRUM-<ID>): <descrição em português no imperativo>`
+  - Exemplos: `feat(SCRUM-6): define mensagens e rpc unaria no protobuf`, `fix(SCRUM-15): ajusta persistencia em disco do buffer fifo`.
 - **Políticas de Integração e Revisão:**
-  - Merges na `main` ou `develop` exigem abertura de Pull Request (PR) com aprovação obrigatória de ao menos um revisor (*Code Review*).
-  - Execução de pipeline automatizado no GitHub Actions (CI) para linters, validação de compilação dos stubs do Protobuf e execução de testes de compatibilidade binária antes de qualquer aprovação.
+  - Merges na `main` exigem abertura de Pull Request (PR) com o identificador do ticket no título (ex.: `[SCRUM-6] Contrato Canônico Protobuf v3`) e aprovação obrigatória de revisor (*Code Review*).
+  - Execução de pipeline automatizado no GitHub Actions (CI) para linters, validação de tipos, compilação dos stubs do Protobuf e execução de testes automatizados antes do merge.
+
+---
+
+### 3.2. Ferramentas Oficiais e Fluxo de Trabalho Ágil (Jira + GitHub)
+
+O ciclo de vida do projeto é gerenciado por uma esteira moderna de engenharia colaborativa e rastreabilidade bidirecional:
+
+#### 3.2.1. Stack de Ferramentas de Gestão e Operação
+| Ferramenta | Papel no Projeto | Acesso / Integração |
+| :--- | :--- | :--- |
+| **Jira Software (Cloud)** | Gestão ágil Scrum, backlog, estimativas, atribuição de tarefas e controle do burndown das Sprints. | Espaço: `ferry-telemetry-tde` (Key: `SCRUM`, Board: `1`) em [rafafigolif.atlassian.net](https://rafafigolif.atlassian.net) |
+| **GitHub** | Repositório central de código-fonte, branches de trabalho, code review e governança. | [RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde) |
+| **GitHub for Atlassian** | Integração oficial em nuvem entre Jira e GitHub. Associa automaticamente branches, commits e PRs às issues através da chave `SCRUM-X`. | Conectado à organização GitHub `RafaelFS01` |
+| **GitHub Actions** | Automação de CI/CD: build multi-stage das imagens Docker, validação de lint/testes e rolling updates no ECS Fargate. | `.github/workflows/` |
+| **Docker & Docker Compose** | Conteinerização uniforme de todos os serviços e orquestração local em 1 comando (`docker-compose.local.yml`). | Runtimes: Node 24, Python 3.14, Postgres 18, Nginx 1.27 |
+| **Terraform (~> 1.17)** | Infraestrutura como Código (IaC) 100% declarativa provisionando VPC, ECS, Fargate, ALB, RDS, SNS e SQS na AWS. | `terraform/` |
+
+#### 3.2.2. Calendário Oficial de Sprints (02 a 22 de Novembro de 2026)
+O projeto possui duração de **3 semanas** com entrega e congelamento no dia **22/11/2026** e apresentação final no **Demo Day de 23/11/2026**:
+- **Sprint 1 (02/11 a 06/11/2026) — Fundação, Contratos IDL e Infraestrutura Base:** Definição do Protobuf v3, IaC da VPC/RDS/Cluster, Docker Compose local e setups dos runtimes NestJS e Python grpc.aio.
+- **Sprint 2 (07/11 a 12/11/2026) — Comunicação gRPC Resiliente e Ingestão com Idempotência:** Simulador GPS náutico, cliente gRPC com deadlines/keepalive, buffer FIFO offline com dump em disco e persistência assíncrona com Alembic.
+- **Sprint 3 (13/11 a 18/11/2026) — Desacoplamento Assíncrono e Interfaces Web:** Broker SNS/SQS com DLQ, worker consumidor em lote, painéis Next.js 16 (Capitão e Central com Leaflet) e IaC do Fargate/ALB.
+- **Sprint 4 (19/11 a 22/11/2026) — CI/CD, Testes de Resiliência E2E e Homologação:** Pipeline GitHub Actions, simulação de partição de 24h (17.280 pacotes), testes de carga, deploy final na AWS e runbooks operacionais.
+- **Demo Day (23/11/2026):** Apresentação acadêmica e demonstração ao vivo da resiliência do sistema distribuído.
+
+#### 3.2.3. Fluxo de Trabalho Integrado (Passo a Passo do Desenvolvedor)
+Para garantir que o app **GitHub for Atlassian** vincule os artefatos de código às tarefas do Jira em tempo real, cada membro da equipe deve seguir estritamente o fluxo:
+1. **Identificar a Tarefa no Jira:** Acesse o board do Jira e verifique a issue atribuída a você (ex.: `SCRUM-6`).
+2. **Criar a Branch a partir da `main`:** Execute o comando canônico descrito no topo da própria tarefa do Jira:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feature/SCRUM-<ID>-<nome-da-tarefa>
+   ```
+3. **Desenvolver e Testar Localmente:** Implemente as alterações e rode os testes e validações estáticas via Docker Compose.
+4. **Comitar com Referência ao Jira:**
+   ```bash
+   git add .
+   git commit -m "feat(SCRUM-<ID>): implementa funcionalidade descrita na tarefa"
+   ```
+5. **Enviar a Branch e Abrir Pull Request:**
+   ```bash
+   git push -u origin feature/SCRUM-<ID>-<nome-da-tarefa>
+   ```
+   No GitHub, abra o PR com o título iniciando por `[SCRUM-<ID>]`. O Jira atualizará o status do desenvolvimento imediatamente.
+6. **Code Review e Merge:** Após aprovação do revisor e aprovação no CI do GitHub Actions, o PR é mesclado na `main`.
+
+#### 3.2.4. Catálogo Canônico de Tarefas Jira e Branches Homologadas
+Todas as 23 tarefas cadastradas no Jira possuem suas respectivas branches padronizadas:
+
+| Chave Jira | Tarefa / Entregável | Sprint | Responsável | Branch Recomendada | Comando Git de Partida |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| **SCRUM-6** | Contrato Canônico Protobuf v3 e RPC EnviarTelemetria | S1 | Otavio Costa | `feature/SCRUM-6-contrato-protobuf` | `git checkout -b feature/SCRUM-6-contrato-protobuf` |
+| **SCRUM-7** | Módulo Terraform: VPC, Subnets e Security Groups | S1 | Rafael Figueiredo | `feature/SCRUM-7-terraform-vpc-subnets` | `git checkout -b feature/SCRUM-7-terraform-vpc-subnets` |
+| **SCRUM-8** | Módulo Terraform: RDS PostgreSQL 18 Single-AZ | S1 | Rafael Figueiredo | `feature/SCRUM-8-terraform-rds-postgres` | `git checkout -b feature/SCRUM-8-terraform-rds-postgres` |
+| **SCRUM-9** | Modelagem Relacional e Migrações Alembic | S1 | Otavio Costa | `feature/SCRUM-9-sqlalchemy-migrations` | `git checkout -b feature/SCRUM-9-sqlalchemy-migrations` |
+| **SCRUM-10** | Setup do Nó Barco (NestJS 12 / Node 24) | S1 | Álex Lima | `feature/SCRUM-10-setup-barco-nestjs` | `git checkout -b feature/SCRUM-10-setup-barco-nestjs` |
+| **SCRUM-11** | Orquestração Local Integrada (Docker Compose) | S1 | Rafael Figueiredo | `feature/SCRUM-11-docker-compose-local` | `git checkout -b feature/SCRUM-11-docker-compose-local` |
+| **SCRUM-12** | Servidor gRPC Assíncrono (Python grpc.aio) | S1 | Otavio Costa | `feature/SCRUM-12-servidor-grpc-python` | `git checkout -b feature/SCRUM-12-servidor-grpc-python` |
+| **SCRUM-13** | Simulador GPS Náutico Salvador-Itaparica | S2 | Otavio Costa | `feature/SCRUM-13-simulador-gps-nautico` | `git checkout -b feature/SCRUM-13-simulador-gps-nautico` |
+| **SCRUM-14** | Cliente gRPC Resiliente (Deadlines e Keepalive) | S2 | Álex Lima | `feature/SCRUM-14-cliente-grpc-resiliente` | `git checkout -b feature/SCRUM-14-cliente-grpc-resiliente` |
+| **SCRUM-15** | Buffer FIFO em Memória com Backup em Disco | S2 | Álex Lima | `feature/SCRUM-15-buffer-fifo-offline` | `git checkout -b feature/SCRUM-15-buffer-fifo-offline` |
+| **SCRUM-16** | Módulo Terraform: Tópico SNS e Filas SQS + DLQ | S3 | Rafael Figueiredo | `feature/SCRUM-16-terraform-sns-sqs-dlq` | `git checkout -b feature/SCRUM-16-terraform-sns-sqs-dlq` |
+| **SCRUM-17** | Worker Consumidor SQS e Escrita em Lote (Batch) | S3 | Otavio Costa | `feature/SCRUM-17-worker-sqs-ingestao` | `git checkout -b feature/SCRUM-17-worker-sqs-ingestao` |
+| **SCRUM-18** | Módulo Terraform: ECS Cluster, Fargate e ALB | S3 | Rafael Figueiredo | `feature/SCRUM-18-terraform-ecs-fargate-alb` | `git checkout -b feature/SCRUM-18-terraform-ecs-fargate-alb` |
+| **SCRUM-19** | Módulo Terraform: Instância EC2 Barco (Ubuntu 24.04)| S3 | Rafael Figueiredo | `feature/SCRUM-19-terraform-ec2-barco` | `git checkout -b feature/SCRUM-19-terraform-ec2-barco` |
+| **SCRUM-20** | Proxies Nginx Conteinerizados (Rate Limiting/Borda)| S3 | Rafael Figueiredo | `feature/SCRUM-20-nginx-reverse-proxy` | `git checkout -b feature/SCRUM-20-nginx-reverse-proxy` |
+| **SCRUM-21** | Painel Tátil do Capitão (Next.js 16 / Tailwind v4) | S3 | Wesley Rios | `feature/SCRUM-21-painel-capitao-nextjs` | `git checkout -b feature/SCRUM-21-painel-capitao-nextjs` |
+| **SCRUM-22** | API REST Interna da Central para Consulta | S3 | Otavio Costa | `feature/SCRUM-22-api-rest-central` | `git checkout -b feature/SCRUM-22-api-rest-central` |
+| **SCRUM-23** | Dashboard Cartográfico Náutico com Leaflet | S3 | Wesley Rios | `feature/SCRUM-23-dashboard-central-leaflet` | `git checkout -b feature/SCRUM-23-dashboard-central-leaflet` |
+| **SCRUM-24** | Pipeline CI/CD com GitHub Actions e Amazon ECR | S4 | Wesley Rios | `feature/SCRUM-24-ci-cd-github-actions` | `git checkout -b feature/SCRUM-24-ci-cd-github-actions` |
+| **SCRUM-25** | Suíte de Testes Automatizados (Pytest e Jest) | S4 | Otavio Costa | `feature/SCRUM-25-testes-pytest-grpc` | `git checkout -b feature/SCRUM-25-testes-pytest-grpc` |
+| **SCRUM-26** | Teste de Partição de Rede de 24h (17.280 pacotes)| S4 | Álex Lima | `feature/SCRUM-26-teste-particao-rede-24h` | `git checkout -b feature/SCRUM-26-teste-particao-rede-24h` |
+| **SCRUM-27** | Deploy e Validação End-to-End na Nuvem AWS | S4 | Rafael Figueiredo | `feature/SCRUM-27-deploy-aws-e2e` | `git checkout -b feature/SCRUM-27-deploy-aws-e2e` |
+| **SCRUM-28** | Documentação Final, Runbooks e Apresentação | S4 | Equipe | `docs/SCRUM-28-runbooks-apresentacao` | `git checkout -b docs/SCRUM-28-runbooks-apresentacao` |
 
 ---
 
@@ -190,10 +267,10 @@ O cronograma de implementação técnica está estruturado em fases sequenciais 
 ### Fase 5: Integração dos Módulos de Apoio e Orquestração
 - **Objetivo:** Construção das camadas visuais e infraestrutura de suporte à demonstração.
 - **Tarefas a Executar:**
-  - Desenvolvimento das interfaces em Next.js 14 (Painel de Bordo do Capitão e Dashboard Náutico com Leaflet).
+  - Desenvolvimento das interfaces em Next.js 16 (Painel de Bordo do Capitão e Dashboard Náutico com Leaflet).
   - Orquestração integrada de contêineres via Docker Compose em malha unificada de rede.
-  - Provisionamento da Malha Elástica com Terraform: Módulos para criação de VPC, Subnets, Target Groups com suporte a gRPC, Application Load Balancer (ALB), Auto Scaling Group (ASG) e instâncias EC2 para o `ferry-central`.
-  - Automação e Configuração com Ansible: Playbooks para configuração automática dos nós recém-provisionados (instalação de runtime Python/Docker, injeção de variáveis de ambiente, subida do serviço gRPC assíncrono e validação de health-check antes da inclusão no balanceador).
+  - Provisionamento da Malha Elástica com Terraform: Módulos para criação de VPC, Subnets, Target Groups gRPC, Application Load Balancer (ALB), Cluster Amazon ECS com tarefas AWS Fargate, tópicos SNS, filas SQS, EC2 do Barco e banco RDS PostgreSQL 18 Single-AZ com PITR.
+  - Automação de CI/CD com GitHub Actions: Workflows automatizados para compilação multi-stage, push para Amazon ECR e deploy contínuo (rolling updates) das tarefas no AWS Fargate com verificação de probes gRPC Health Checking.
   - Teste de Carga e Escala: Simulação de adição dinâmica de nós centrais durante envio contínuo de telemetria, atestando o balanceamento transparente das requisições.
 
 ---
@@ -213,7 +290,7 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
   - **Cliente gRPC Resiliente:** Responsável pela invocação RPC, controle de deadline (2.500 ms), keepalive e propagação de Correlation ID.
 - **Apresentação & Borda:**
   - **Borda Reversa Nginx (Porta 80 / 8080):** Rate limiting e hardening de rede.
-  - **Painel Tátil do Capitão (Next.js 14 Standalone na Porta 3000):** Controle de lotação, visualização da taxa de envio e estado da fila.
+  - **Painel Tátil do Capitão (Next.js 16 Standalone na Porta 3000):** Controle de lotação, visualização da taxa de envio e estado da fila.
 
 ### 5.2. Canal de Comunicação Distribuída
 
@@ -221,22 +298,23 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
 
 ### 5.3. Nó Servidor Central (Instância B - Central de Terra)
 
-- **Servidor de Ingestão (Python 3.11):**
+- **Servidor de Ingestão (Python 3.14):**
   - **Servidor gRPC Assíncrono (grpc.aio na Porta 50051):** Recepção de alto desempenho, validação de schema e verificação de integridade.
   - **Mecanismo de Idempotência:** Controle estrito de duplicidade baseado na chave primária UUIDv4 com política `ON CONFLICT DO NOTHING`.
 - **Roteamento e Persistência:**
-  - **Modo Direto / Local:** Conexão direta via pool TCP (porta 5432) com o Prisma Client para persistência no PostgreSQL 16.
+  - **Modo Direto / Local:** Conexão direta via pool TCP assíncrono (porta 5432) com SQLAlchemy 2.0 / asyncpg para persistência no PostgreSQL 18.
   - **Modo Nuvem Desacoplado (Mensageria Serverless AWS):** Publicação em tópico SNS (`ferry-telemetria-topic`) com fan-out para filas SQS (`ferry-db-writer-queue` para persistência em lote e `ferry-alerts-queue` para detecção de anomalias/lotação), contando com Dead Letter Queue (DLQ) com retenção de 14 dias e consumidor assíncrono.
-  - **Base de Dados Relacional:** PostgreSQL 16 contendo a tabela `telemetrias` com chave primária `message_id` e campo gerado computado `latencia_transito_ms` (`STORED`).
+  - **Base de Dados Relacional:** PostgreSQL 18 contendo a tabela `telemetrias` com chave primária `message_id` e campo gerado computado `latencia_transito_ms` (`STORED`).
 - **Monitoramento Cartográfico:**
   - **Borda Reversa Nginx (Porta 80 / 8081):** Headers de segurança e proxy HTTP.
-  - **Dashboard Cartográfico Náutico (Next.js 14 Standalone na Porta 3001):** Visualização espacial da rota em tempo real via Leaflet, OpenStreetMap e gráficos Recharts alimentados por queries Prisma/SQL.
+  - **Dashboard Cartográfico Náutico (Next.js 16 Standalone na Porta 3001):** Visualização espacial da rota em tempo real via Leaflet, OpenStreetMap e gráficos Recharts alimentados por API REST interna da Central.
 - **Arquitetura de Escalonamento Horizontal (Nó Central):**
-  - **Pool de Ingestão Elástico:** Conjunto escalável de instâncias EC2/contêineres executando o serviço `ferry-central` em Python 3.11 (grpc.aio).
+  - **Pool de Ingestão Elástico Serverless:** Tarefas elásticas no Amazon ECS com AWS Fargate executando o serviço `ferry-central` em Python 3.14 (`grpc.aio`), escalando sob demanda sem necessidade de instâncias EC2 subjacentes.
   - **Balanceamento L7 gRPC:** Ingress / ALB distribuindo streams HTTP/2 por algoritmo round-robin ou least-outstanding-requests diretamente aos nós de ingestão saudáveis.
-  - **Provisionamento Automatizado (Terraform + Ansible):**
-    - **Terraform:** Gerencia a infraestrutura declarativa (criação e destruição de instâncias de ingestão sob demanda com base em métricas de CPU/conexões).
-    - **Ansible:** Orquestra a inicialização e provisionamento dos nós escalados, garantindo idempotência na configuração do ambiente de runtime e integração imediata ao cluster de ingestão.
+  - **Provisionamento e Orquestração Serverless (Terraform + ECS Fargate + GitHub Actions):**
+    - **Terraform:** Gerencia 100% da infraestrutura declarativa (criação do Cluster ECS, Task Definitions, ECS Services, Application Load Balancers, tópicos SNS, filas SQS e banco RDS).
+    - **AWS Fargate + CloudWatch:** Orquestra o auto-scaling dinâmico dos contêineres: a ingestão gRPC escala por CPU/conexões e os workers de banco escalam instantaneamente pelo volume de mensagens na fila SQS (`ApproximateNumberOfMessagesVisible`), esvaziando rajadas de 24h sem servidores ociosos.
+    - **GitHub Actions + Amazon ECR:** Executa a esteira automatizada de build, push de imagens versionadas e rolling update transparente das tarefas no ECS Fargate.
   - **Consistência em Múltiplos Nós:** Como múltiplas instâncias da central podem receber pacotes retransmitidos simultaneamente pelo buffer do barco, a idempotência transacional (`ON CONFLICT (message_id) DO NOTHING` no PostgreSQL) garante a integridade dos dados independente de qual nó processe a requisição.
 
 ---
@@ -246,13 +324,13 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
 O planejamento técnico de como cada aspecto de segurança será projetado e implementado na versão final do sistema:
 
 - **Autenticação e Autorização:**
-  O canal de telemetria gRPC adotará autenticação mútua e criptografia de ponta a ponta via **mTLS (Mutual TLS)** sobre HTTP/2. O nó embarcado (`ferry-boat`) possuirá um certificado digital de cliente X.509 assinado pela Autoridade Certificadora (CA) do projeto, e o servidor de ingestão (na borda com o ALB / Central) validará a autenticidade e integridade desse certificado a cada conexão. Embora o handshake criptográfico inicial do TLS introduza um custo leve de latência no momento da abertura do socket TCP, a persistência e a multiplexação de streams do HTTP/2 amortizam completamente essa sobrecarga ao longo de toda a travessia náutica, mantendo o canal aberto e performático. Essa estratégia estabelece uma postura de segurança *Zero Trust*, tornando o sistema imune aos riscos de IPs dinâmicos das operadoras móveis em alto-mar. Os painéis web em Next.js 14 e a API interna do simulador operarão protegidos por proxies Nginx. O acesso administrativo às instâncias EC2 será restrito por chaves SSH, e as credenciais de acesso ao PostgreSQL serão isoladas.
+  O canal de telemetria gRPC adotará autenticação mútua e criptografia de ponta a ponta via **mTLS (Mutual TLS)** sobre HTTP/2. O nó embarcado (`ferry-boat`) possuirá um certificado digital de cliente X.509 assinado pela Autoridade Certificadora (CA) do projeto, e o servidor de ingestão (na borda com o ALB / Central) validará a autenticidade e integridade desse certificado a cada conexão. Embora o handshake criptográfico inicial do TLS introduza um custo leve de latência no momento da abertura do socket TCP, a persistência e a multiplexação de streams do HTTP/2 amortizam completamente essa sobrecarga ao longo de toda a travessia náutica, mantendo o canal aberto e performático. Essa estratégia estabelece uma postura de segurança *Zero Trust*, tornando o sistema imune aos riscos de IPs dinâmicos das operadoras móveis em alto-mar. Os painéis web em Next.js 16 e a API interna do simulador operarão protegidos por proxies Nginx. Na Central, com a adoção do AWS Fargate Serverless, elimina-se completamente a superfície de ataque por SSH (porta 22 fechada na nuvem), e as credenciais de acesso ao PostgreSQL são isoladas estritamente na VPC privada.
 - **Gestão de Segredos e Tokens:**
   Seguirá as boas práticas de segurança em desenvolvimento de software para prevenir o vazamento de credenciais. Nenhuma senha, chave privada ou arquivo local de ambiente (`.env`) será versionado no repositório Git, sendo blindados no `.gitignore`. Na automação com Terraform, as variáveis sensíveis, como a senha de administração do RDS, serão demarcadas com o atributo `sensitive`, suprimindo sua exibição em logs de terminal e planos de execução. No ambiente de produção e na integração contínua (CI/CD), a injeção de parâmetros sensíveis (chaves SSH, strings de conexão ao banco e tokens do Docker Hub) ocorrerá dinamicamente em tempo de execução via GitHub Actions Secrets.
 - **Proteção de Borda:**
   Será projetada através da inclusão de proxies reversos Nginx atuando à frente dos módulos frontend em ambos os nós da arquitetura. O Nginx será configurado para mascarar a assinatura do servidor, aplicar políticas ativas de limitação de taxa (*Rate Limiting* e resposta HTTP 429 para amortecer potenciais ataques de negação de serviço) e injetar cabeçalhos HTTP de proteção estrita, incluindo Content-Security-Policy, prevenção contra Clickjacking e bloqueio de inferência de tipo.
 - **Regras de Firewall:**
-  Serão estruturadas por meio de AWS Security Groups interdependentes. Apenas o tráfego HTTP/HTTPS padrão (portas 80 e 443/50051) e o acesso SSH restrito (porta 22) estarão expostos publicamente à internet. A porta do serviço gRPC na Central aceitará conexões externas autenticadas estritamente via handshake mTLS (rejeitando sumariamente no handshake qualquer cliente sem o certificado válido da embarcação), mantendo os nós internos da Central e a porta do PostgreSQL no RDS completamente inacessíveis da internet pública, aceitando conexões exclusivamente provenientes das instâncias autorizadas de ingestão.
+  Serão estruturadas por meio de AWS Security Groups interdependentes. Apenas o tráfego HTTP/HTTPS e gRPC seguro (portas 80, 443 e 50051) estará exposto publicamente via Application Load Balancer. Como a Central roda em AWS Fargate Serverless, não há porta SSH (22) exposta na nuvem. A porta do serviço gRPC na Central aceitará conexões autenticadas estritamente via handshake mTLS (rejeitando sumariamente qualquer cliente sem o certificado válido da embarcação), mantendo as tarefas internas e a porta do PostgreSQL no RDS completamente inacessíveis da internet pública, aceitando conexões exclusivamente provenientes dos Security Groups autorizados do ECS/ALB.
 - **Segmentação de Rede:**
   Toda a infraestrutura em nuvem será isolada em uma Virtual Private Cloud (VPC). As instâncias computacionais (Barco e Central) serão alocadas em subnets públicas com rotas de saída via Internet Gateway para viabilizar os acessos web e rotinas de manutenção SSH. A base de dados relacional (RDS) residirá em subnets privadas sem rotas de saída para a internet, tornando o banco inacessível fora dos limites internos da VPC. No nível do sistema operacional, cada host executará seus contêineres confinados em redes Docker (`barco-net` e `central-net`), garantindo a contenção do tráfego local entre os serviços.
 
@@ -273,7 +351,7 @@ O ecossistema utiliza o AWS Route 53 dividido em duas Zonas de Hospedagem (*Host
 
 2. **Zona Privada da VPC (AWS Route 53 Private Hosted Zone):**
    - **Domínio Interno:** `ferry.internal` (isolado estritamente dentro da VPC).
-   - `db.ferry.internal`: Registro do tipo CNAME mapeando o endpoint primário da instância PostgreSQL 16 no Amazon RDS Multi-AZ. As instâncias do pool de ingestão e os workers de mensageria utilizam exclusivamente esse FQDN para inicialização do pool de conexões TCP, mantendo as credenciais desacopladas de endereços IP mutáveis.
+   - `db.ferry.internal`: Registro do tipo CNAME mapeando o endpoint primário da instância PostgreSQL 18 no Amazon RDS Single-AZ com PITR. As tarefas do pool de ingestão e os workers de mensageria utilizam exclusivamente esse FQDN para inicialização do pool de conexões TCP, mantendo as credenciais desacopladas de endereços IP mutáveis.
    - `events.ferry.internal`: Registro interno via AWS PrivateLink/VPC Endpoints para comunicação direta e privada das instâncias com os tópicos SNS e filas SQS, prevenindo que o tráfego interno trafegue pelo Internet Gateway.
 
 ### 7.2. Resolução no Ambiente Local (Docker Compose)

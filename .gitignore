@@ -1,0 +1,28 @@
+# Ambientes e credenciais
+.env
+.env.*
+*.pem
+*.key
+*.cert
+*.crt
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Backups e pastas locais temporárias
+sistemas-distribuidos-tde/
+created_keys.json
+.DS_Store
+Thumbs.db
+
+# Runtimes e dependências
+node_modules/
+dist/
+.next/
+__pycache__/
+*.pyc
+.venv/
+venv/
