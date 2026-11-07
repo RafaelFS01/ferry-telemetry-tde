@@ -94,3 +94,34 @@ output "security_group_barco_id" {
   value       = aws_security_group.sg_ferry_barco.id
 }
 
+# ------------------------------------------------------------------------------
+# Banco de Dados Relacional AWS RDS PostgreSQL 18 (SCRUM-8)
+# ------------------------------------------------------------------------------
+
+output "rds_endpoint" {
+  description = "Endpoint de conexão DNS e porta do RDS PostgreSQL 18"
+  value       = aws_db_instance.ferry_postgres.endpoint
+}
+
+output "rds_address" {
+  description = "Hostname DNS do banco de dados RDS PostgreSQL 18"
+  value       = aws_db_instance.ferry_postgres.address
+}
+
+output "rds_port" {
+  description = "Porta TCP do banco de dados RDS PostgreSQL (padrão 5432)"
+  value       = aws_db_instance.ferry_postgres.port
+}
+
+output "rds_database_name" {
+  description = "Nome do banco de dados relacional inicial"
+  value       = aws_db_instance.ferry_postgres.db_name
+}
+
+output "rds_master_username" {
+  description = "Nome do usuário administrador mestre do RDS"
+  value       = aws_db_instance.ferry_postgres.username
+  sensitive   = true
+}
+
+

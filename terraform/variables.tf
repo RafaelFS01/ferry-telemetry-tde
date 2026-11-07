@@ -1,6 +1,6 @@
 # ==============================================================================
 # Variáveis de Configuração de Rede e Infraestrutura
-# Projeto: ferry-telemetry-tde | Módulo: Core Networking (SCRUM-7)
+# Projeto: ferry-telemetry-tde | Módulo: Core Networking & Database (SCRUM-7, SCRUM-8)
 # ==============================================================================
 
 variable "aws_region" {
@@ -63,3 +63,55 @@ variable "admin_cidr" {
   default     = "0.0.0.0/0"
 }
 
+# ------------------------------------------------------------------------------
+# Variáveis do Banco de Dados Relacional AWS RDS PostgreSQL 18 (SCRUM-8)
+# ------------------------------------------------------------------------------
+
+variable "db_engine_version" {
+  description = "Versão do motor PostgreSQL gerenciado no RDS"
+  type        = string
+  default     = "18.6"
+}
+
+variable "db_instance_class" {
+  description = "Classe da instância de computação RDS (ARM Graviton2 otimizado para custo)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_name" {
+  description = "Nome do banco de dados relacional inicial"
+  type        = string
+  default     = "ferry_telemetry"
+}
+
+variable "db_username" {
+  description = "Nome do usuário administrador mestre do banco"
+  type        = string
+  default     = "ferry_admin"
+}
+
+variable "db_password" {
+  description = "Senha do usuário administrador mestre do banco"
+  type        = string
+  sensitive   = true
+  default     = "FerrySecure2026!"
+}
+
+variable "db_allocated_storage" {
+  description = "Armazenamento alocado inicial em Gigabytes (gp3)"
+  type        = number
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  description = "Limite máximo para auto-scaling de armazenamento (gp3)"
+  type        = number
+  default     = 50
+}
+
+variable "db_backup_retention_period" {
+  description = "Dias de retenção de backups automáticos e logs WAL para PITR (1 dia para compatibilidade com AWS Free Tier)"
+  type        = number
+  default     = 1
+}
