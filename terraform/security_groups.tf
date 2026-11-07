@@ -63,6 +63,10 @@ resource "aws_security_group" "sg_ferry_fargate" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  lifecycle {
+    ignore_changes = [egress]
+  }
+
   tags = {
     Name = "sg_ferry_fargate"
     Tier = "Private-App"
