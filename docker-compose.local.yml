@@ -1,0 +1,127 @@
+# Orquestração local (paridade Dev/Prod) — SCRUM-11
+#
+# Uso:
+#   cp .env.example .env
+#   docker compose -f docker-compose.local.yml up --build
+#
+# Ordem de inicialização garantida por healthchecks:
+#   postgres + localstack (healthy)  ->  ferry-central (healthy)  ->  ferry-boat
+
+name: ferry-telemetry
+
+x-aws-local: &aws-local
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ferry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ferry_local}
+      POSTGRES_DB: postgres
+      TELEMETRY_DB: ${TELEMETRY_DB:-ferry_telemetry}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # A partir do Postgres 18 o PGDATA fica em /var/lib/postgresql/18/docker
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${TELEMETRY_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  localstack:
+    image: localstack/localstack:${LOCALSTACK_VERSION:-4.9}
+    restart: unless-stopped
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./docker/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh:ro
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      # Só fica healthy depois que o script de init criou a última fila
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ferry-alerts-queue >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  ferry-central:
+    build:
+      context: ./ferry-central
+      dockerfile: ../docker/dev/central.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    environment:
+      <<: *aws-local
+      GRPC_PORT: 50051
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
+      SNS_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-us-east-1}:000000000000:ferry-telemetria-topic
+      SQS_DB_WRITER_QUEUE_URL: http://localstack:4566/000000000000/ferry-db-writer-queue
+      SQS_ALERTS_QUEUE_URL: http://localstack:4566/000000000000/ferry-alerts-queue
+    ports:
+      - "50051:50051"
+    volumes:
+      # Bind mount do código para hot-reload
+      - ./ferry-central:/app
+      - ./proto:/proto:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 50051), 2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  ferry-boat:
+    build:
+      context: ./ferry-boat
+      dockerfile: ../docker/dev/boat.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      ferry-central:
+        condition: service_healthy
+    environment:
+      BOAT_ID: ${BOAT_ID:-ferry-ivete-sangalo}
+      CENTRAL_GRPC_URL: ferry-central:50051
+      TELEMETRY_INTERVAL_MS: 5000
+      GRPC_DEADLINE_MS: 2500
+      BUFFER_MAX_ITEMS: 5000
+      BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
+      API_PORT: 3002
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./ferry-boat:/app
+      - ./proto:/proto:ro
+      # node_modules isolado do host (evita binários do Windows/macOS no container)
+      - boat-node-modules:/app/node_modules
+      # Backup do buffer FIFO sobrevive a reinícios do container
+      - boat-buffer:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3002,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  localstack-data:
+  boat-node-modules:
+  boat-buffer:
