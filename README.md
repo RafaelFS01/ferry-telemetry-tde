@@ -47,9 +47,9 @@ Projetar, implementar e validar uma malha de comunicação distribuída de alta 
 O núcleo do projeto concentra-se estritamente na malha de comunicação distribuída, na formalização de contratos de interface e no tratamento rigoroso das garantias de chamadas remotas de procedimentos (RPC):
 
 1. **Contrato e Definição de Interface (IDL):**
-   - Definição formal e canônica de mensagens e serviços através de Protocol Buffers v3.
-   - Especificação de RPC unária (o cliente embarcado submete uma única requisição de telemetria e recebe uma confirmação de entrega).
-   - Modelagem estrita de tipos: coordenadas geográficas (`latitude`, `longitude` em `double`), contagem de lotação (`passageiros` em `int32`), carimbo de tempo de origem (`timestamp_coleta` em `int64`) e rastreabilidade unívoca (`message_id` em `string` UUIDv4).
+   - Definição formal e canônica de mensagens e serviços através de Protocol Buffers v3 (`proto/telemetry.proto`, pacote `ferry.telemetry.v1`).
+   - Especificação de RPC unária (`TelemetryService.EnviarTelemetria`: o cliente embarcado submete um `TelemetryPacket` e recebe um `TelemetryAck` com confirmação e carimbo de data/hora do servidor).
+   - Modelagem estrita e estruturada de tipos: rastreabilidade unívoca (`message_id` em `string` UUIDv4 e `boat_id`), carimbo de tempo de origem (`timestamp_coleta` em `int64`), contagem de lotação (`passageiros` em `int32`), dados de navegação (`NavigationData`: `latitude`, `longitude`, `velocidade_nos`, `rumo_graus`, `status_navegacao`), propulsão náutica (`PropulsionData`: `rpm_motor`, `temperatura_motor_celsius`, `pressao_oleo_bar`, `nivel_combustivel_percentual`, `consumo_instantaneo_lph`) e diagnóstico de rede (`NetworkDiagnostics`: `rssi_dbm`, `latencia_rtt_ms`, `perda_pacotes_percentual`, `tamanho_buffer_local`, `tentativa_envio`, `tipo_enlace`).
 
 2. **Canal de Comunicação e Transporte (gRPC sobre HTTP/2):**
    - **Multiplexação:** Múltiplas requisições e respostas trafegando em um único socket TCP persistente.
@@ -102,12 +102,13 @@ A organização de diretórios planejada para o ecossistema distribuído mantém
 ```text
 ferry-telemetry-tde/
 ├── proto/                         ---> [NÚCLEO CANÔNICO]
-│   └── ferryboat.proto            ---> Contrato IDL Protobuf v3 (RPCs e mensagens)
+│   ├── telemetry.proto            ---> Contrato IDL Protobuf v3 (pacote ferry.telemetry.v1)
+│   └── buf.yaml                   ---> Configuração de lint e validação sintática Buf
 │
 ├── ferry-boat/                    ---> [NÓ CLIENTE EMBARCADO (A)]
 │   ├── src/
 │   │   ├── grpc/                  ---> Stubs TypeScript e cliente gRPC resiliente
-│   │   │   ├── ferryboat.ts       ---> Interfaces e tipos gerados via protoc
+│   │   │   ├── telemetry.ts       ---> Interfaces e tipos gerados via protoc
 │   │   │   └── telemetry-grpc.client.ts ---> Invocações RPC, deadlines (2.500ms) e keepalive
 │   │   ├── buffer/                ---> Camada de tolerância a quedas do canal gRPC
 │   │   │   └── fifo-buffer.service.ts ---> Fila em memória (5.000 itens) + backup em disco
@@ -119,9 +120,9 @@ ferry-telemetry-tde/
 │   ├── src/
 │   │   ├── server/
 │   │   │   ├── main.py            ---> Inicialização do servidor assíncrono grpc.aio (:50051)
-│   │   │   ├── service.py         ---> Implementação do FerryTelemetryServicer
+│   │   │   ├── service.py         ---> Implementação do TelemetryServiceServicer
 │   │   │   └── idempotency.py     ---> Validação de UUIDv4 e controle de duplicação
-│   │   ├── proto/                 ---> Stubs gerados em Python (_pb2.py e _pb2_grpc.py)
+│   │   ├── proto/                 ---> Stubs gerados em Python (telemetry_pb2.py e telemetry_pb2_grpc.py)
 │   │   └── database/              ---> Camada de persistência (SQLAlchemy 2.0 / PostgreSQL 18)
 │   ├── alembic/                   ---> Configurações de migração relacional assíncrona (Alembic)
 │   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 16)
@@ -236,7 +237,8 @@ O cronograma de implementação técnica está estruturado em fases sequenciais 
 ### Fase 1: Concepção do Contrato e Especificação IDL
 - **Objetivo:** Definição da interface formal e validação do domínio distribuído.
 - **Tarefas a Executar:**
-  - Criação do arquivo canônico `ferryboat.proto` com tipagem estrita para telemetria náutica (coordenadas, contagem de passageiros, timestamps em epoch e identificador UUIDv4).
+  - Criação do arquivo canônico `proto/telemetry.proto` (pacote `ferry.telemetry.v1`) com tipagem estrita para telemetria náutica (`TelemetryPacket` com dados de navegação, propulsão náutica, diagnóstico de rede, lotação, timestamps em epoch e identificador UUIDv4, e resposta `TelemetryAck` no serviço `TelemetryService`).
+  - Validação sintática limpa e lint com `protoc` / `buf` (`proto/buf.yaml`).
   - Automação de compilação dos stubs via `protoc` / `grpc_tools` para os ecossistemas TypeScript e Python.
   - Implementação de suíte de testes de invariantes para validação de compatibilidade binária entre os compiladores.
 
@@ -294,7 +296,7 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
 
 ### 5.2. Canal de Comunicação Distribuída
 
-- **RPC Unária `EnviarTelemetria`:** Executada sobre HTTP/2 com criptografia e autenticação mútua via **mTLS (Mutual TLS)** e Protocol Buffers v3, transportando a carga útil contendo `UUIDv4`, `Latitude`, `Longitude`, `Passageiros` e `Epoch Timestamp`.
+- **RPC Unária `TelemetryService/EnviarTelemetria`:** Executada sobre HTTP/2 com criptografia e autenticação mútua via **mTLS (Mutual TLS)** e Protocol Buffers v3 (`ferry.telemetry.v1`), transportando o `TelemetryPacket` (`message_id` UUIDv4, `boat_id`, `timestamp_coleta`, `passageiros`, `NavigationData`, `PropulsionData` e `NetworkDiagnostics`) e retornando o `TelemetryAck` com confirmação de entrega e carimbo de data/hora do servidor (`processado_em`).
 
 ### 5.3. Nó Servidor Central (Instância B - Central de Terra)
 
