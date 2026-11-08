@@ -124,4 +124,49 @@ output "rds_master_username" {
   sensitive   = true
 }
 
+# ------------------------------------------------------------------------------
+# Mensageria Assíncrona Amazon SNS & SQS (SCRUM-16)
+# ------------------------------------------------------------------------------
+
+output "sns_topic_arn" {
+  description = "ARN do tópico SNS de telemetria para Fan-Out de eventos"
+  value       = aws_sns_topic.ferry_telemetry_topic.arn
+}
+
+output "sns_topic_name" {
+  description = "Nome do tópico SNS de telemetria"
+  value       = aws_sns_topic.ferry_telemetry_topic.name
+}
+
+output "sqs_db_writer_queue_url" {
+  description = "URL da fila SQS para persistência no PostgreSQL"
+  value       = aws_sqs_queue.ferry_db_writer_queue.id
+}
+
+output "sqs_db_writer_queue_arn" {
+  description = "ARN da fila SQS para persistência no PostgreSQL"
+  value       = aws_sqs_queue.ferry_db_writer_queue.arn
+}
+
+output "sqs_alerts_queue_url" {
+  description = "URL da fila SQS para notificações e alertas críticos"
+  value       = aws_sqs_queue.ferry_alerts_queue.id
+}
+
+output "sqs_alerts_queue_arn" {
+  description = "ARN da fila SQS para notificações e alertas críticos"
+  value       = aws_sqs_queue.ferry_alerts_queue.arn
+}
+
+output "sqs_dlq_url" {
+  description = "URL da Dead Letter Queue (DLQ) para mensagens descartadas após 5 tentativas"
+  value       = aws_sqs_queue.ferry_telemetry_dlq.id
+}
+
+output "sqs_dlq_arn" {
+  description = "ARN da Dead Letter Queue (DLQ) para mensagens descartadas após 5 tentativas"
+  value       = aws_sqs_queue.ferry_telemetry_dlq.arn
+}
+
+
 

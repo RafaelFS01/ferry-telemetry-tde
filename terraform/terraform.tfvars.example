@@ -19,3 +19,14 @@ db_password                = "FerrySecure2026!"
 db_allocated_storage       = 20
 db_max_allocated_storage   = 50
 db_backup_retention_period = 1
+
+# Configurações de Mensageria SNS & SQS
+sns_topic_name                 = "ferry-telemetria-topic"
+sqs_db_writer_queue_name       = "ferry-db-writer-queue"
+sqs_alerts_queue_name          = "ferry-alerts-queue"
+sqs_dlq_name                   = "ferry-telemetry-dlq"
+sqs_max_receive_count          = 5
+sqs_visibility_timeout_seconds = 30
+sqs_message_retention_seconds  = 345600
+sqs_dlq_retention_seconds      = 1209600
+

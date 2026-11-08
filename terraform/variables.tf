@@ -115,3 +115,56 @@ variable "db_backup_retention_period" {
   type        = number
   default     = 1
 }
+
+# ------------------------------------------------------------------------------
+# Variáveis de Mensageria Amazon SNS e SQS (SCRUM-16)
+# ------------------------------------------------------------------------------
+
+variable "sns_topic_name" {
+  description = "Nome do tópico SNS para distribuição Fan-Out dos eventos de telemetria"
+  type        = string
+  default     = "ferry-telemetria-topic"
+}
+
+variable "sqs_db_writer_queue_name" {
+  description = "Nome da fila SQS para persistência no banco de dados"
+  type        = string
+  default     = "ferry-db-writer-queue"
+}
+
+variable "sqs_alerts_queue_name" {
+  description = "Nome da fila SQS para processamento de alertas críticos"
+  type        = string
+  default     = "ferry-alerts-queue"
+}
+
+variable "sqs_dlq_name" {
+  description = "Nome da Dead Letter Queue (DLQ) para mensagens com falha"
+  type        = string
+  default     = "ferry-telemetry-dlq"
+}
+
+variable "sqs_max_receive_count" {
+  description = "Número máximo de tentativas de entrega antes de enviar a mensagem para a DLQ"
+  type        = number
+  default     = 5
+}
+
+variable "sqs_visibility_timeout_seconds" {
+  description = "Tempo de visibilidade da mensagem em segundos (tempo para o worker processar)"
+  type        = number
+  default     = 30
+}
+
+variable "sqs_message_retention_seconds" {
+  description = "Tempo de retenção das mensagens nas filas principais em segundos (padrão: 4 dias)"
+  type        = number
+  default     = 345600
+}
+
+variable "sqs_dlq_retention_seconds" {
+  description = "Tempo de retenção das mensagens na DLQ em segundos (padrão: 14 dias)"
+  type        = number
+  default     = 1209600
+}
+
