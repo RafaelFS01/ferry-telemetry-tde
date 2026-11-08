@@ -1,0 +1,16 @@
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  except:
+    # O contrato canônico reside diretamente em proto/telemetry.proto por definição arquitetural
+    - PACKAGE_DIRECTORY_MATCH
+    # Nomes canônicos exigidos pela especificação do domínio (TelemetryPacket / TelemetryAck)
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE
+

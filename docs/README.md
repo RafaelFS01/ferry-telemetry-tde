@@ -95,17 +95,17 @@ Para assegurar controle rigoroso de prazos, alocação de responsabilidades e hi
 
 ### 4.1. Ferramental Oficial Homologado
 1. **Jira Software Cloud:**
-   - **Projeto:** erry-telemetry-tde (Chave: SCRUM, Board ID: 1)
+   - **Projeto:** `ferry-telemetry-tde` (Chave: `SCRUM`, Board ID: `1`)
    - **Espaço:** [rafafigolif.atlassian.net](https://rafafigolif.atlassian.net)
    - **Papel:** Gestão de backlog, épicos, planejamento de sprints, estimativas por Story Points, atribuição de responsáveis e acompanhamento do burndown chart.
 2. **GitHub:**
    - **Repositório:** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
    - **Papel:** Versionamento Git, branches protegidas, revisão por pares (*Code Review*) e esteira de CI/CD.
 3. **GitHub for Atlassian (Integração Oficial em Nuvem):**
-   - **Conexão:** Organização GitHub RafaelFS01 vinculada diretamente ao workspace Atlassian.
-   - **Rastreabilidade Bidirecional:** A presença da chave da issue (ex: SCRUM-6) no nome da branch, mensagens de commit ou títulos de Pull Request atualiza dinamicamente o status no Jira, vinculando commits, deploys e revisões diretamente no card da tarefa.
+   - **Conexão:** Organização GitHub `RafaelFS01` vinculada diretamente ao workspace Atlassian.
+   - **Rastreabilidade Bidirecional:** A presença da chave da issue (ex: `SCRUM-6`) no nome da branch, mensagens de commit ou títulos de Pull Request atualiza dinamicamente o status no Jira, vinculando commits, deploys e revisões diretamente no card da tarefa.
 4. **GitHub Actions:** Execução automatizada de linters, testes de compatibilidade gRPC/Protobuf e build de imagens Docker multi-stage.
-5. **Docker Compose:** Paridade de execução local (docker-compose.local.yml).
+5. **Docker Compose:** Paridade de execução local (`docker-compose.local.yml`).
 6. **Terraform (~> 1.17):** Infraestrutura como Código (IaC) declarativa na AWS.
 
 ---
@@ -115,7 +115,7 @@ O projeto desenvolve-se ao longo de **21 dias** divididos em **4 Sprints**, com 
 
 | Sprint | Período | Foco Técnico Principal |
 | :---: | :---: | :--- |
-| **Sprint 1** | **02/11 a 06/11/2026** | **Fundação, Contratos IDL e Infraestrutura Base:** Contrato erryboat.proto, Módulos Terraform de VPC, Subnets, RDS Postgres 18 e Cluster ECS, orquestração local Docker Compose, setup do nó Barco (NestJS 12 / Node 24) e servidor assíncrono Python grpc.aio. |
+| **Sprint 1** | **02/11 a 06/11/2026** | **Fundação, Contratos IDL e Infraestrutura Base:** Contrato `proto/telemetry.proto` (`ferry.telemetry.v1`), Módulos Terraform de VPC, Subnets, RDS Postgres 18 e Cluster ECS, orquestração local Docker Compose, setup do nó Barco (NestJS 12 / Node 24) e servidor assíncrono Python grpc.aio. |
 | **Sprint 2** | **07/11 a 12/11/2026** | **Comunicação gRPC Resiliente e Ingestão com Idempotência:** Simulador GPS náutico Salvador-Itaparica, cliente gRPC resiliente com deadlines e keepalive, buffer FIFO offline com persistência em disco e persistência assíncrona com Alembic/SQLAlchemy 2.0. |
 | **Sprint 3** | **13/11 a 18/11/2026** | **Desacoplamento Assíncrono e Interfaces Web:** Módulos Terraform para SNS/SQS com DLQ, worker consumidor em lote, IaC Fargate/ALB, proxies Nginx, Painel do Capitão em Next.js 16 e Dashboard Náutico com Leaflet. |
 | **Sprint 4** | **19/11 a 22/11/2026** | **CI/CD, Testes de Resiliência E2E e Homologação:** Pipeline GitHub Actions, suíte de testes Pytest/Jest, teste de partição de 24h (17.280 pacotes), deploy e validação E2E na AWS e runbooks operacionais. |
@@ -128,19 +128,19 @@ O projeto desenvolve-se ao longo de **21 dias** divididos em **4 Sprints**, com 
 Para acionar a sincronização em tempo real do app **GitHub for Atlassian**, toda a equipe adota as seguintes regras estritas:
 
 1. **Branches de Trabalho:**
-   - Criadas exclusivamente a partir da branch main atualizada.
-   - Padrão: <tipo>/SCRUM-<ID>-<nome-kebab-case>
+   - Criadas exclusivamente a partir da branch `main` atualizada.
+   - Padrão: `<tipo>/SCRUM-<ID>-<nome-kebab-case>`
    - Exemplos:
-     - eature/SCRUM-6-contrato-protobuf
-     - eature/SCRUM-14-cliente-grpc-resiliente
-     - docs/SCRUM-28-runbooks-apresentacao
+     - `feature/SCRUM-6-contrato-protobuf`
+     - `feature/SCRUM-14-cliente-grpc-resiliente`
+     - `docs/SCRUM-28-runbooks-apresentacao`
 2. **Mensagens de Commit (Conventional Commits Rastreável):**
-   - Formato: <tipo>(SCRUM-<ID>): <descrição no imperativo em português>
+   - Formato: `<tipo>(SCRUM-<ID>): <descrição no imperativo em português>`
    - Exemplos:
-     - eat(SCRUM-6): define mensagens e rpc unaria no protobuf
-     - eat(SCRUM-15): implementa buffer fifo e escrita periodica em disco
-     - 	est(SCRUM-26): simula particao de rede de 24h sem perda de dados
+     - `feat(SCRUM-6): define mensagens e rpc unaria no protobuf`
+     - `feat(SCRUM-15): implementa buffer fifo e escrita periodica em disco`
+     - `test(SCRUM-26): simula particao de rede de 24h sem perda de dados`
 3. **Pull Requests:**
-   - Título obrigatório: [SCRUM-<ID>] <Título descritivo da entrega>
+   - Título obrigatório: `[SCRUM-<ID>] <Título descritivo da entrega>`
    - O corpo do PR deve conter link direto para o card do Jira e descrição das alterações validadas.
-   - Bloqueio de merge direto na main sem aprovação de code review e CI verde.
+   - Bloqueio de merge direto na `main` sem aprovação de code review e CI verde.
