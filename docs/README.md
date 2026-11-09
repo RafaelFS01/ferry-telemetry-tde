@@ -136,6 +136,8 @@ Para acionar a sincronização em tempo real do app **GitHub for Atlassian**, to
      - `docs/SCRUM-28-runbooks-apresentacao`
 2. **Mensagens de Commit (Conventional Commits Rastreável):**
    - Formato: `<tipo>(SCRUM-<ID>): <descrição no imperativo em português>`
+   - **Granularidade obrigatória nas branches:** Criar um commit por arquivo alterado ou por alteração lógica individual, sempre com descrição específica e referência ao ticket. Não reunir várias alterações independentes em um único commit genérico.
+   - **Seleção das alterações:** Adicionar apenas o arquivo correspondente com `git add -- caminho/do/arquivo` e conferir `git diff --cached` antes de cada commit. Quando um arquivo contiver mudanças independentes, separar os trechos com `git add -p -- caminho/do/arquivo`. Repetir o processo para os demais arquivos ou alterações, evitando `git add .` quando houver mudanças independentes.
    - Exemplos:
      - `feat(SCRUM-6): define mensagens e rpc unaria no protobuf`
      - `feat(SCRUM-15): implementa buffer fifo e escrita periodica em disco`
