@@ -2,7 +2,11 @@
 # O código é montado via bind mount; node_modules fica em volume nomeado.
 FROM node:24-alpine
 
+# Usa o protoc compilado para musl; os binários npm de grpc-tools usam glibc.
+RUN apk add --no-cache protobuf
+
 ENV NODE_ENV=development \
+    PROTOC_PATH=/usr/bin/protoc \
     # Bind mounts no Windows/macOS não propagam eventos inotify
     CHOKIDAR_USEPOLLING=true
 
