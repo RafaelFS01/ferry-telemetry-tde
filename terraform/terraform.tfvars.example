@@ -30,3 +30,15 @@ sqs_visibility_timeout_seconds = 30
 sqs_message_retention_seconds  = 345600
 sqs_dlq_retention_seconds      = 1209600
 
+# Configurações de Computação Serverless ECS Fargate & ALB (SCRUM-18)
+ecs_ingestion_cpu           = "512"
+ecs_ingestion_memory        = "1024"
+ecs_worker_cpu              = "256"
+ecs_worker_memory           = "512"
+ecs_ingestion_desired_count = 1
+ecs_worker_desired_count    = 1
+ecs_ingestion_image         = "public.ecr.aws/docker/library/python:3.14-slim"
+ecs_worker_image            = "public.ecr.aws/docker/library/python:3.14-slim"
+ecs_log_retention_days      = 7
+
+

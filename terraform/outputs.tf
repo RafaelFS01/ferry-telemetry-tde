@@ -168,5 +168,74 @@ output "sqs_dlq_arn" {
   value       = aws_sqs_queue.ferry_telemetry_dlq.arn
 }
 
+# ------------------------------------------------------------------------------
+# Application Load Balancer L7 gRPC & REST (SCRUM-18)
+# ------------------------------------------------------------------------------
+
+output "alb_dns_name" {
+  description = "DNS público do Application Load Balancer L7 para ingestão gRPC e tráfego REST"
+  value       = aws_lb.ferry_alb.dns_name
+}
+
+output "alb_arn" {
+  description = "ARN do Application Load Balancer L7"
+  value       = aws_lb.ferry_alb.arn
+}
+
+output "alb_grpc_target_group_arn" {
+  description = "ARN do Target Group gRPC HTTP/2 (Porta 50051)"
+  value       = aws_lb_target_group.ferry_grpc_tg.arn
+}
+
+output "alb_rest_target_group_arn" {
+  description = "ARN do Target Group REST / Dashboard (Porta 8000)"
+  value       = aws_lb_target_group.ferry_rest_tg.arn
+}
+
+# ------------------------------------------------------------------------------
+# Amazon ECS Cluster Fargate, Task Definitions e Services (SCRUM-18)
+# ------------------------------------------------------------------------------
+
+output "ecs_cluster_name" {
+  description = "Nome do Cluster ECS Serverless Fargate"
+  value       = aws_ecs_cluster.ferry_cluster.name
+}
+
+output "ecs_cluster_arn" {
+  description = "ARN do Cluster ECS Serverless Fargate"
+  value       = aws_ecs_cluster.ferry_cluster.arn
+}
+
+output "ecs_ingestion_service_name" {
+  description = "Nome do ECS Service de Ingestão gRPC"
+  value       = aws_ecs_service.ferry_central_ingestion.name
+}
+
+output "ecs_worker_service_name" {
+  description = "Nome do ECS Service consumidor Worker SQS"
+  value       = aws_ecs_service.ferry_central_worker.name
+}
+
+output "ecs_ingestion_task_definition_arn" {
+  description = "ARN da Task Definition do serviço de Ingestão"
+  value       = aws_ecs_task_definition.ferry_central_ingestion.arn
+}
+
+output "ecs_worker_task_definition_arn" {
+  description = "ARN da Task Definition do serviço Worker SQS"
+  value       = aws_ecs_task_definition.ferry_central_worker.arn
+}
+
+output "cloudwatch_log_group_ingestion" {
+  description = "Nome do CloudWatch Log Group para o serviço de Ingestão"
+  value       = aws_cloudwatch_log_group.ecs_ingestion_logs.name
+}
+
+output "cloudwatch_log_group_worker" {
+  description = "Nome do CloudWatch Log Group para o serviço Worker SQS"
+  value       = aws_cloudwatch_log_group.ecs_worker_logs.name
+}
+
+
 
 
