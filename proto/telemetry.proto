@@ -43,6 +43,8 @@ message NavigationData {
   double velocidade_nos = 3;              // Velocidade sobre o fundo (SOG) em nós náuticos (knots)
   double rumo_graus = 4;                  // Curso/aproamento verdadeiro (COG/Heading) entre 0.0 e 360.0 graus
   NavigationStatus status_navegacao = 5;  // Estado operacional corrente da embarcação
+  optional double hdop = 6;              // Diluição horizontal de precisão; ausente em emissores legados
+  optional uint32 satelites = 7;         // Quantidade de satélites usados na solução GPS
 }
 
 // Telemetria dos motores principais e sistemas de propulsão náutica.
@@ -52,6 +54,7 @@ message PropulsionData {
   double pressao_oleo_bar = 3;              // Pressão do óleo lubrificante principal em Bar
   double nivel_combustivel_percentual = 4;  // Nível remanescente de combustível diesel marítimo (0.0 a 100.0%)
   double consumo_instantaneo_lph = 5;       // Vazão instantânea de combustível em litros por hora (L/h)
+  optional double tensao_bateria_volts = 6; // Tensão do sistema elétrico de bordo em volts
 }
 
 // Métricas de qualidade do enlace marítimo e estado do buffer de tolerância a falhas (CAP/AP).
@@ -73,6 +76,7 @@ message TelemetryPacket {
   NavigationData navegacao = 5;      // Métricas de navegação e posicionamento GPS
   PropulsionData propulsao = 6;      // Métricas de propulsão náutica e telemetria de máquina
   NetworkDiagnostics rede = 7;       // Diagnóstico de conectividade de rede e estado do buffer offline
+  optional uint64 sequence_number = 8; // Sequência a partir de 1 por execução; ausente em emissores legados
 }
 
 // Confirmação (ACK) retornada de forma síncrona pelo Nó Servidor Central ao Nó Embarcado.
