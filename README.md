@@ -132,6 +132,26 @@ ferry-telemetry-tde/
 └── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
 ```
 
+### Execução do Nó Embarcado (SCRUM-10)
+
+O cliente `ferry-boat` é um submódulo Git. Com Node.js 24 LTS (24.15+) e npm 11,
+execute a partir da raiz deste repositório:
+
+```powershell
+git submodule update --init ferry-boat
+cd ferry-boat
+Copy-Item .env.example .env
+npm ci
+npm run start:dev
+```
+
+Em Linux/macOS, substitua `Copy-Item` por `cp`. A API interna de bordo inicia na
+porta 3002 e disponibiliza `GET /health`. O setup declara os quatro módulos
+fundamentais e gera os tipos a partir do contrato canônico em `proto/telemetry.proto`.
+Simulador, buffer e resiliência do cliente serão implementados nas tarefas seguintes.
+Consulte [o guia do nó embarcado](ferry-boat/README.md) para geração de tipos,
+variáveis de ambiente, mTLS, testes e fluxo de versionamento do submódulo.
+
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
 - **Nó Servidor Central:** [https://github.com/RafaelFS01/ferry-central](https://github.com/RafaelFS01/ferry-central)
@@ -149,6 +169,8 @@ A colaboração e a rastreabilidade do código-fonte seguem padrões rigorosos d
 - **Política de Commits (Conventional Commits Rastreável):** Adoção estrita de Conventional Commits contendo a chave do ticket Jira no escopo, permitindo sincronização automática:
   - Formato: `<tipo>(SCRUM-<ID>): <descrição em português no imperativo>`
   - Exemplos: `feat(SCRUM-6): define mensagens e rpc unaria no protobuf`, `fix(SCRUM-15): ajusta persistencia em disco do buffer fifo`.
+  - **Granularidade obrigatória nas branches:** Criar um commit por arquivo alterado ou por alteração lógica individual. Cada commit deve ter um objetivo específico e uma descrição que permita identificar a mudança e o ticket responsável; não reunir várias alterações independentes em um único commit genérico.
+  - **Seleção das alterações:** Adicionar ao staging apenas o arquivo ou os trechos da alteração que será registrada. Se um arquivo contiver mudanças independentes, separá-las com `git add -p`. Conferir `git diff --cached` antes de cada commit e repetir o processo para os demais arquivos ou alterações.
 - **Políticas de Integração e Revisão:**
   - Merges na `main` exigem abertura de Pull Request (PR) com o identificador do ticket no título (ex.: `[SCRUM-6] Contrato Canônico Protobuf v3`) e aprovação obrigatória de revisor (*Code Review*).
   - Execução de pipeline automatizado no GitHub Actions (CI) para linters, validação de tipos, compilação dos stubs do Protobuf e execução de testes automatizados antes do merge.
@@ -187,11 +209,13 @@ Para garantir que o app **GitHub for Atlassian** vincule os artefatos de código
    git checkout -b feature/SCRUM-<ID>-<nome-da-tarefa>
    ```
 3. **Desenvolver e Testar Localmente:** Implemente as alterações e rode os testes e validações estáticas via Docker Compose.
-4. **Comitar com Referência ao Jira:**
+4. **Comitar por Arquivo ou Alteração com Referência ao Jira:**
    ```bash
-   git add .
-   git commit -m "feat(SCRUM-<ID>): implementa funcionalidade descrita na tarefa"
+   git add -- caminho/do/arquivo
+   git diff --cached
+   git commit -m "feat(SCRUM-<ID>): implementa alteracao especifica do arquivo"
    ```
+   Repita para cada arquivo ou alteração lógica individual. Para registrar apenas parte de um arquivo, use `git add -p -- caminho/do/arquivo`. Evite `git add .` quando houver várias alterações independentes, preservando a rastreabilidade de cada mudança na branch.
 5. **Enviar a Branch e Abrir Pull Request:**
    ```bash
    git push -u origin feature/SCRUM-<ID>-<nome-da-tarefa>
