@@ -148,9 +148,30 @@ npm run start:dev
 Em Linux/macOS, substitua `Copy-Item` por `cp`. A API interna de bordo inicia na
 porta 3002 e disponibiliza `GET /health`. O setup declara os quatro módulos
 fundamentais e gera os tipos a partir do contrato canônico em `proto/telemetry.proto`.
-Simulador, buffer e resiliência do cliente serão implementados nas tarefas seguintes.
+O simulador da SCRUM-13 publica amostras locais a cada 5s; buffer e resiliência
+do cliente serão conectados nas tarefas seguintes.
 Consulte [o guia do nó embarcado](ferry-boat/README.md) para geração de tipos,
 variáveis de ambiente, mTLS, testes e fluxo de versionamento do submódulo.
+
+### Simulador Náutico (SCRUM-13)
+
+O `GpsSimulatorModule` gera `telemetry.generated` independentemente da Central.
+Cada amostra contém UUIDv4 em `message_id` e seu alias local `packet_id`, timestamp
+e `sequence_number` incremental a partir de 1 por execução. O trajeto sintético
+liga São Joaquim (-12.9482, -38.5028) a Bom Despacho (-12.9774, -38.5724), com
+ida e volta, aceleração/frenagem, parada de 30s em cada terminal e ruído GPS.
+As faixas de cruzeiro são 10–14 nós e 1500–1850 RPM; manobras e atracação usam
+velocidade/RPM inferiores. Temperatura, HDOP, satélites, bateria e consumo de
+combustível acompanham o estado do modelo.
+
+O IDL foi estendido com campos opcionais, preservando os anteriores:
+`TelemetryPacket.sequence_number` (uint64, tag 8), `NavigationData.hdop`
+(double, tag 6), `NavigationData.satelites` (uint32, tag 7) e
+`PropulsionData.tensao_bateria_volts` (double, tag 6). No TypeScript, sequência
+e timestamps são strings; `packet_id` permanece apenas no evento local.
+O modelo usa tanque cheio de 2000 L e entra em emergência se o combustível
+acabar, mantendo a geração. Consulte o guia do barco para configuração e testes.
+Não há calibração por dados reais nem persistência/envio automático do evento.
 
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
