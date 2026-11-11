@@ -1,0 +1,28 @@
+name: Orchestrator CI
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'docs/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          submodules: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Lint do contrato Protobuf
+        working-directory: proto
+        run: npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf lint
+      - name: Configuracao Compose
+        run: docker compose -f docker-compose.local.yml config --quiet
+      - name: Build do barco Alpine
+        run: docker compose -f docker-compose.local.yml build ferry-boat
+      - name: Testes e tipos no container
+        run: docker compose -f docker-compose.local.yml run --rm --no-deps -T ferry-boat sh -c "npm ci && npm test && npm run typecheck"
