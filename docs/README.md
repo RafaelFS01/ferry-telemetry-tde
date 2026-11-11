@@ -89,6 +89,36 @@ O ecossistema foi calibrado para operar no **topo do ciclo de vida tecnológico 
 
 ---
 
+### 3.6. Simulador Náutico e Evolução do Contrato (SCRUM-13)
+
+O simulador do barco separa modelo físico puro e serviço NestJS. O serviço usa
+relógio monotônico e publica `telemetry.generated` a cada 5000 ms, após aguardar
+os listeners do EventEmitter. Sua operação não depende de gRPC nem de fila.
+O evento em memória será consumido pelo buffer e pelo envio em tarefas próprias.
+
+Cada amostra possui `message_id` UUIDv4, alias local `packet_id` e sequência
+incremental por execução. A sequência não reinicia entre viagens e não é
+persistida após reinício do processo. O contrato mantém todos os campos existentes
+e acrescenta `optional uint64 sequence_number = 8` em TelemetryPacket,
+`optional double hdop = 6` e `optional uint32 satelites = 7` em NavigationData e
+`optional double tensao_bateria_volts = 6` em PropulsionData. Valores int64/uint64
+são strings no cliente TypeScript. Ausência dos campos opcionais identifica
+mensagens legadas; `packet_id` não é um campo adicional de rede.
+
+O percurso geodésico sintético liga São Joaquim (-12.9482, -38.5028) a Bom
+Despacho (-12.9774, -38.5724), alternando ida e volta com atracação de 30s,
+aceleração/frenagem de 0,1 m/s² e GPS com ruído limitado a 10m. Cruzeiro de
+10–14 nós e 1500–1850 RPM; velocidade e RPM menores nas manobras. O modelo
+inclui temperatura 78–92°C, 8–14 satélites, HDOP 0,8–2,0 e bateria 24–27V.
+Tanque inicialmente cheio de 2000 L, consumo integrado e parada em emergência
+ao esgotar o combustível, preservando a emissão de amostras.
+
+Habilitação, tempo de atracação, capacidade e seed são configuráveis pelo ambiente
+do barco. A seed reproduz sensores e não UUIDs. Passageiros e diagnósticos de rede
+usam placeholders documentados no guia do barco. Rota, maré e motores são
+sintéticos, sem calibração por embarcação real. A entrega não implementa fila
+persistente, retransmissão, armazenamento dos novos campos na Central ou painéis.
+
 ## 4. Governança Ágil, Ferramentas e Rastreabilidade Integrada (Jira + GitHub)
 
 Para assegurar controle rigoroso de prazos, alocação de responsabilidades e histórico auditável de cada decisão técnica, o projeto adota o framework ágil **Scrum** associado à esteira de desenvolvimento integrado **Jira Software + GitHub Cloud**:
