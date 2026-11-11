@@ -168,3 +168,62 @@ variable "sqs_dlq_retention_seconds" {
   default     = 1209600
 }
 
+# ------------------------------------------------------------------------------
+# Variáveis de Computação Serverless AWS ECS Fargate & ALB (SCRUM-18)
+# ------------------------------------------------------------------------------
+
+variable "ecs_ingestion_cpu" {
+  description = "Unidades de CPU alocadas para a tarefa de Ingestão Fargate (512 = 0.5 vCPU)"
+  type        = string
+  default     = "512"
+}
+
+variable "ecs_ingestion_memory" {
+  description = "Memória em MiB alocada para a tarefa de Ingestão Fargate (1024 = 1 GB)"
+  type        = string
+  default     = "1024"
+}
+
+variable "ecs_worker_cpu" {
+  description = "Unidades de CPU alocadas para a tarefa Worker SQS Fargate (256 = 0.25 vCPU)"
+  type        = string
+  default     = "256"
+}
+
+variable "ecs_worker_memory" {
+  description = "Memória em MiB alocada para a tarefa Worker SQS Fargate (512 = 0.5 GB)"
+  type        = string
+  default     = "512"
+}
+
+variable "ecs_ingestion_desired_count" {
+  description = "Número desejado de tarefas em execução para o serviço de Ingestão"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_worker_desired_count" {
+  description = "Número desejado de tarefas em execução para o serviço Worker SQS"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_ingestion_image" {
+  description = "URI da imagem Docker para o serviço de Ingestão gRPC (central-ingestion)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.14-slim"
+}
+
+variable "ecs_worker_image" {
+  description = "URI da imagem Docker para o serviço consumidor Worker SQS (central-worker)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.14-slim"
+}
+
+variable "ecs_log_retention_days" {
+  description = "Dias de retenção dos logs de contêiner no CloudWatch Logs"
+  type        = number
+  default     = 7
+}
+
+
