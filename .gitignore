@@ -6,6 +6,10 @@
 *.cert
 *.crt
 
+# Exceção para certificado self-signed de homologação do ALB
+!terraform/certs/alb.key
+!terraform/certs/alb.crt
+
 # Terraform
 *.tfstate
 *.tfstate.*

@@ -92,14 +92,31 @@ resource "aws_lb_target_group" "ferry_rest_tg" {
 }
 
 # ------------------------------------------------------------------------------
-# 4. Listeners do ALB
+# 4. Certificado SSL/TLS para gRPC (Requisito AWS ALB para Target Groups GRPC)
 # ------------------------------------------------------------------------------
 
-# Listener gRPC (:50051)
+resource "aws_acm_certificate" "ferry_alb_cert" {
+  private_key      = file("${path.module}/certs/alb.key")
+  certificate_body = file("${path.module}/certs/alb.crt")
+
+  tags = {
+    Name        = "ferry-alb-grpc-cert-${var.environment}"
+    Component   = "Security"
+    Environment = var.environment
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 5. Listeners do ALB
+# ------------------------------------------------------------------------------
+
+# Listener gRPC (:50051 HTTPS com negociacao HTTP/2 ALPN)
 resource "aws_lb_listener" "grpc_listener" {
   load_balancer_arn = aws_lb.ferry_alb.arn
   port              = 50051
-  protocol          = "HTTP"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate.ferry_alb_cert.arn
 
   default_action {
     type             = "forward"
@@ -108,7 +125,7 @@ resource "aws_lb_listener" "grpc_listener" {
 
   tags = {
     Name      = "listener-ferry-grpc-${var.environment}"
-    Protocol  = "gRPC"
+    Protocol  = "gRPC-HTTPS"
     Port      = "50051"
     Component = "LoadBalancer"
   }

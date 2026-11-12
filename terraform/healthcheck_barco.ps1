@@ -40,25 +40,25 @@ Write-Host "    [✓] Plano Terraform gerado com sucesso sem conflitos estrutura
 # 3. Verificacao de Existencia do Script de User Data
 Write-Host "`n[3] VERIFICANDO SCRIPT DE PROVISIONAMENTO USER DATA..." -ForegroundColor Yellow
 $userDataPath = "scripts/user_data_barco.sh"
-if (Test-Path $userDataPath) {
-    $userDataContent = Get-Content $userDataPath -Raw
-    $hasDocker = $userDataContent -match "docker-ce"
-    $hasNode24 = $userDataContent -match "setup_24.x"
-    $hasChrony = $userDataContent -match "chrony"
-
-    if ($hasDocker -and $hasNode24 -and $hasChrony) {
-        Write-Host "    [✓] Script User Data integro: Docker, Node.js 24 LTS e Chrony configurados." -ForegroundColor Green
-    } else {
-        Write-Host "[X] AVISO: Script User Data ausente de componentes essenciais!" -ForegroundColor Red
-        exit 1
-    }
-} else {
+if (-not (Test-Path $userDataPath)) {
     Write-Host "[X] ERRO: Arquivo $userDataPath nao encontrado!" -ForegroundColor Red
     exit 1
 }
 
-# 4. Verificacao Opcional de Infraestrutura Ativa (caso provisionada na AWS)
-Write-Host "`n[4] VERIFICANDO DISPONIBILIDADE NA AWS (SE ATIVA)..." -ForegroundColor Yellow
+$userDataContent = Get-Content $userDataPath -Raw
+$hasDocker = $userDataContent -match "docker-ce"
+$hasNode24 = $userDataContent -match "setup_24.x"
+$hasChrony = $userDataContent -match "chrony"
+
+if ($hasDocker -and $hasNode24 -and $hasChrony) {
+    Write-Host "    [✓] Script User Data integro: Docker, Node.js 24 LTS e Chrony configurados." -ForegroundColor Green
+} else {
+    Write-Host "[X] AVISO: Script User Data ausente de componentes essenciais!" -ForegroundColor Red
+    exit 1
+}
+
+# 4. Verificacao de Infraestrutura Ativa na AWS
+Write-Host "`n[4] VERIFICANDO DISPONIBILIDADE NA AWS..." -ForegroundColor Yellow
 
 $instanceJson = aws ec2 describe-instances --filters "Name=tag:Name,Values=$instanceName" "Name=instance-state-name,Values=running,pending,stopped" --region $region 2>$null | ConvertFrom-Json
 if ($instanceJson -and $instanceJson.Reservations.Count -gt 0 -and $instanceJson.Reservations[0].Instances.Count -gt 0) {
@@ -72,4 +72,3 @@ if ($instanceJson -and $instanceJson.Reservations.Count -gt 0 -and $instanceJson
 Write-Host "`n======================================================================" -ForegroundColor Cyan
 Write-Host " [✓] HOMOLOGACAO DO MODULO SCRUM-19 (EC2 SIMULADORA) CONCLUIDA COM SUCESSO!" -ForegroundColor Green
 Write-Host "======================================================================" -ForegroundColor Cyan
-
