@@ -41,4 +41,11 @@ ecs_ingestion_image         = "public.ecr.aws/docker/library/python:3.14-slim"
 ecs_worker_image            = "public.ecr.aws/docker/library/python:3.14-slim"
 ecs_log_retention_days      = 7
 
+# Configurações da Instância EC2 Simuladora do Barco (SCRUM-19)
+ec2_barco_instance_type = "t3.small"
+ec2_barco_ami_id        = ""
+ec2_barco_key_name      = ""
+ec2_barco_volume_size   = 20
+
+
 
