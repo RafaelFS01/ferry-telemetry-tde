@@ -100,7 +100,8 @@ services:
       BOAT_ID: ${BOAT_ID:-ferry-ivete-sangalo}
       CENTRAL_GRPC_URL: ferry-central:50051
       TELEMETRY_INTERVAL_MS: 5000
-      GRPC_DEADLINE_MS: 2500
+      GRPC_DEADLINE_MS: ${GRPC_DEADLINE_MS:-2500}
+      GRPC_RETRY_MAX_ATTEMPTS: ${GRPC_RETRY_MAX_ATTEMPTS:-6}
       BUFFER_MAX_ITEMS: 5000
       BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
       API_PORT: 3002
