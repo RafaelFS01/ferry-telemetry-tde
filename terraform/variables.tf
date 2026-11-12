@@ -226,4 +226,33 @@ variable "ecs_log_retention_days" {
   default     = 7
 }
 
+# ------------------------------------------------------------------------------
+# Variáveis da Instância EC2 Simuladora do Nó Barco (SCRUM-19)
+# ------------------------------------------------------------------------------
+
+variable "ec2_barco_instance_type" {
+  description = "Tipo da instância EC2 para simulação do Nó Barco"
+  type        = string
+  default     = "t3.small"
+}
+
+variable "ec2_barco_ami_id" {
+  description = "ID da AMI customizada para o Barco (se vazio, consulta a AMI Ubuntu 24.04 LTS mais recente)"
+  type        = string
+  default     = ""
+}
+
+variable "ec2_barco_key_name" {
+  description = "Nome do par de chaves SSH para acesso administrativo ao Nó Barco"
+  type        = string
+  default     = ""
+}
+
+variable "ec2_barco_volume_size" {
+  description = "Tamanho em GB do disco raiz EBS (gp3) da instância do Barco"
+  type        = number
+  default     = 20
+}
+
+
 

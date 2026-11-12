@@ -236,6 +236,31 @@ output "cloudwatch_log_group_worker" {
   value       = aws_cloudwatch_log_group.ecs_worker_logs.name
 }
 
+# ------------------------------------------------------------------------------
+# Instância EC2 Simuladora do Nó Barco (SCRUM-19)
+# ------------------------------------------------------------------------------
+
+output "ec2_barco_instance_id" {
+  description = "ID da instância EC2 do Nó Barco"
+  value       = aws_instance.ferry_barco.id
+}
+
+output "ec2_barco_arn" {
+  description = "ARN da instância EC2 do Nó Barco"
+  value       = aws_instance.ferry_barco.arn
+}
+
+output "ec2_barco_elastic_ip" {
+  description = "Endereço Elastic IP estático associado à instância do Barco"
+  value       = aws_eip.ferry_barco_eip.public_ip
+}
+
+output "ec2_barco_private_ip" {
+  description = "IP privado da instância do Barco na Subnet Pública B"
+  value       = aws_instance.ferry_barco.private_ip
+}
+
+
 
 
 
