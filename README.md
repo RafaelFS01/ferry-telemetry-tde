@@ -173,6 +173,23 @@ O modelo usa tanque cheio de 2000 L e entra em emergência se o combustível
 acabar, mantendo a geração. Consulte o guia do barco para configuração e testes.
 Não há calibração por dados reais nem persistência/envio automático do evento.
 
+### Cliente gRPC Resiliente (SCRUM-14)
+
+O cliente de bordo aplica deadline gRPC de 2500ms por tentativa e keepalive de
+10s, com timeout de 5s e pings habilitados sem chamadas. Apenas `UNAVAILABLE`
+e `DEADLINE_EXCEEDED` recebem retries: bases de 2/4/8/16/30s, jitter de ±20%
+e teto absoluto de 30s. O padrão é seis tentativas totais, configurável por
+`GRPC_RETRY_MAX_ATTEMPTS` (1–10). UUID, sequência e timestamp são preservados.
+No Compose, deadline e tentativas podem ser definidos no `.env` do orquestrador;
+na execução direta, use o `.env` do barco.
+
+Na primeira falha transitória, `telemetry.offline` sinaliza imediatamente o
+futuro buffer; `telemetry.delivery-settled` informa confirmação, rejeição,
+falha ou cancelamento. Os retries ativos pertencem ao cliente. Persistência,
+flush e conexão automática do simulador ao envio permanecem na SCRUM-15;
+sem consumidor, os eventos não garantem retenção. Consulte o guia do barco
+para o contrato dos eventos, mTLS e configuração.
+
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
 - **Nó Servidor Central:** [https://github.com/RafaelFS01/ferry-central](https://github.com/RafaelFS01/ferry-central)
