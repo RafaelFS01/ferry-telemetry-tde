@@ -119,6 +119,31 @@ usam placeholders documentados no guia do barco. Rota, maré e motores são
 sintéticos, sem calibração por embarcação real. A entrega não implementa fila
 persistente, retransmissão, armazenamento dos novos campos na Central ou painéis.
 
+### 3.7. Resiliência do Cliente gRPC (SCRUM-14)
+
+O canal NestJS usa keepalive de 10000ms, timeout de 5000ms e
+`keepalive_permit_without_calls=1`. A Central integrada permite pings sem dados
+com intervalo de 10s. A política deve continuar compatível com proxies e
+balanceadores do ambiente de implantação.
+
+Cada tentativa de RPC recebe deadline novo de 2500ms (configurável para menos,
+sem exceder esse teto). O cancelamento ocorre no transporte gRPC. Os status
+`UNAVAILABLE` e `DEADLINE_EXCEEDED` acionam retries em bases 2/4/8/16/30s,
+jitter de ±20% e teto absoluto de 30s. Há seis tentativas por padrão, incluindo
+a original; `GRPC_RETRY_MAX_ATTEMPTS` aceita 1–10. Um único controlador de
+retries evita sobreposição com a política nativa do canal.
+
+O pacote mantém UUID, timestamp e sequência durante os reenvios. A primeira
+falha transitória publica `telemetry.offline` imediatamente. O futuro buffer
+da SCRUM-15 deverá persistir por UUID e aguardar `telemetry.delivery-settled`
+antes de assumir a retransmissão. Apenas ACK aceito/duplicado do mesmo UUID
+confirma entrega; rejeição, erro e cancelamento não autorizam remover a pendência.
+Erros permanentes são propagados sem retry nem acionamento offline.
+
+Eventos locais não substituem persistência. A SCRUM-14 não implementa a fila
+nem conecta automaticamente o gerador ao cliente. Configuração e contrato
+completo constam no README do `ferry-boat`.
+
 ## 4. Governança Ágil, Ferramentas e Rastreabilidade Integrada (Jira + GitHub)
 
 Para assegurar controle rigoroso de prazos, alocação de responsabilidades e histórico auditável de cada decisão técnica, o projeto adota o framework ágil **Scrum** associado à esteira de desenvolvimento integrado **Jira Software + GitHub Cloud**:
