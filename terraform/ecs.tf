@@ -196,6 +196,7 @@ resource "aws_ecs_task_definition" "ferry_central_ingestion" {
       name      = "ferry-central-ingestion"
       image     = var.ecs_ingestion_image
       essential = true
+      command   = ["python3", "-c", "import time; print('Fargate Ingestion Service Running'); time.sleep(86400)"]
 
       portMappings = [
         {
@@ -283,6 +284,7 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
       name      = "ferry-central-worker"
       image     = var.ecs_worker_image
       essential = true
+      command   = ["python3", "-c", "import time; print('Fargate Worker Service Running'); time.sleep(86400)"]
 
       environment = [
         {
