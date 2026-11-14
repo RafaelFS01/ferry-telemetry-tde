@@ -6,6 +6,10 @@
 #
 # Ordem de inicialização garantida por healthchecks:
 #   postgres + localstack (healthy)  ->  ferry-central (healthy)  ->  ferry-boat
+#
+# Pontos de entrada (SCRUM-20):
+#   http://localhost:8080  Borda do Barco   (/ painel, /api/edge/ API NestJS)
+#   http://localhost:8081  Borda da Central (/ dashboard, /api/ API Python)
 
 name: ferry-telemetry
 
@@ -15,6 +19,21 @@ x-aws-local: &aws-local
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_ENDPOINT_URL: http://localstack:4566
+
+x-nginx-env: &nginx-env
+  NGINX_RESOLVER: 127.0.0.11
+  # Next.js em modo dev usa eval no HMR; em produção esta variável fica vazia
+  CSP_SCRIPT_EXTRA: "'unsafe-eval'"
+
+x-nginx-base: &nginx-base
+  image: nginx:1.27-alpine
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 5s
 
 services:
   postgres:
@@ -120,6 +139,32 @@ services:
       timeout: 3s
       retries: 10
       start_period: 60s
+
+  # Borda do Nó Barco: Painel do Capitão (/) e API local do NestJS (/api/edge/)
+  nginx-edge:
+    <<: *nginx-base
+    environment:
+      <<: *nginx-env
+      CAPTAIN_PANEL_UPSTREAM: http://captain-panel:3000
+      EDGE_API_UPSTREAM: http://ferry-boat:3002
+    ports:
+      - "${NGINX_EDGE_PORT:-8080}:80"
+    volumes:
+      - ./docker/nginx-edge.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/nginx/snippets:/etc/nginx/snippets:ro
+
+  # Borda do Nó Central: Dashboard (/) e API REST Python (/api/)
+  nginx-central:
+    <<: *nginx-base
+    environment:
+      <<: *nginx-env
+      DASHBOARD_UPSTREAM: http://dashboard:3000
+      CENTRAL_API_UPSTREAM: http://ferry-central:8000
+    ports:
+      - "${NGINX_CENTRAL_PORT:-8081}:80"
+    volumes:
+      - ./docker/nginx-central.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/nginx/snippets:/etc/nginx/snippets:ro
 
 volumes:
   postgres-data:
