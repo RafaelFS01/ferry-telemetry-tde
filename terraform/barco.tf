@@ -33,6 +33,8 @@ resource "aws_instance" "ferry_barco" {
   vpc_security_group_ids      = [aws_security_group.sg_ferry_barco.id]
   associate_public_ip_address = true
   key_name                    = var.ec2_barco_key_name != "" ? var.ec2_barco_key_name : null
+  # SSM + leitura do ECR para o deploy contínuo sem SSH (SCRUM-24)
+  iam_instance_profile = aws_iam_instance_profile.barco.name
 
   user_data                   = file("${path.module}/scripts/user_data_barco.sh")
   user_data_replace_on_change = true

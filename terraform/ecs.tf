@@ -368,6 +368,11 @@ resource "aws_ecs_service" "ferry_central_ingestion" {
 
   depends_on = [aws_lb_listener.grpc_listener]
 
+  # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
   tags = {
     Name        = "ferry-central-ingestion-${var.environment}"
     Component   = "Compute"
@@ -394,6 +399,11 @@ resource "aws_ecs_service" "ferry_central_worker" {
     ]
     security_groups  = [aws_security_group.sg_ferry_fargate.id]
     assign_public_ip = false
+  }
+
+  # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  lifecycle {
+    ignore_changes = [task_definition]
   }
 
   tags = {

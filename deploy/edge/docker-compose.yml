@@ -1,0 +1,39 @@
+# Runtime do Nó Barco na EC2 simuladora (SCRUM-24).
+# Copiado para /opt/ferry-boat pelo workflow cd-edge-deploy.yml, que define
+# ECR_REGISTRY e IMAGE_TAG. Configurações específicas da embarcação (BOAT_ID,
+# CENTRAL_GRPC_URL e caminhos mTLS) ficam em /opt/ferry-boat/.env, mantido pelo operador.
+name: ferry-edge
+
+services:
+  ferry-boat:
+    image: ${ECR_REGISTRY}/ferry-boat:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3002
+      BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
+    volumes:
+      - boat-data:/app/data
+      # Certificados mTLS do barco (obrigatórios com NODE_ENV=production)
+      - ./certs:/app/certs:ro
+
+  captain-panel:
+    image: ${ECR_REGISTRY}/ferry-captain-panel:${IMAGE_TAG}
+    restart: unless-stopped
+
+  nginx-edge:
+    image: ${ECR_REGISTRY}/ferry-nginx-edge:${IMAGE_TAG}
+    restart: unless-stopped
+    depends_on: [ferry-boat, captain-panel]
+    environment:
+      CAPTAIN_PANEL_UPSTREAM: http://captain-panel:3000
+      EDGE_API_UPSTREAM: http://ferry-boat:3002
+    ports:
+      - "80:80"
+
+volumes:
+  boat-data:
