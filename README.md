@@ -148,8 +148,8 @@ npm run start:dev
 Em Linux/macOS, substitua `Copy-Item` por `cp`. A API interna de bordo inicia na
 porta 3002 e disponibiliza `GET /health`. O setup declara os quatro módulos
 fundamentais e gera os tipos a partir do contrato canônico em `proto/telemetry.proto`.
-O simulador da SCRUM-13 publica amostras locais a cada 5s; buffer e resiliência
-do cliente serão conectados nas tarefas seguintes.
+O simulador da SCRUM-13 publica amostras a cada 5s. O buffer da SCRUM-15 persiste
+as coletas e conecta o envio automático ao cliente resiliente da SCRUM-14.
 Consulte [o guia do nó embarcado](ferry-boat/README.md) para geração de tipos,
 variáveis de ambiente, mTLS, testes e fluxo de versionamento do submódulo.
 
@@ -171,7 +171,8 @@ O IDL foi estendido com campos opcionais, preservando os anteriores:
 e timestamps são strings; `packet_id` permanece apenas no evento local.
 O modelo usa tanque cheio de 2000 L e entra em emergência se o combustível
 acabar, mantendo a geração. Consulte o guia do barco para configuração e testes.
-Não há calibração por dados reais nem persistência/envio automático do evento.
+Não há calibração por dados reais. O evento é consumido pelo buffer persistente
+da SCRUM-15 para retenção e envio automático.
 
 ### Cliente gRPC Resiliente (SCRUM-14)
 
@@ -184,11 +185,30 @@ No Compose, deadline e tentativas podem ser definidos no `.env` do orquestrador;
 na execução direta, use o `.env` do barco.
 
 Na primeira falha transitória, `telemetry.offline` sinaliza imediatamente o
-futuro buffer; `telemetry.delivery-settled` informa confirmação, rejeição,
-falha ou cancelamento. Os retries ativos pertencem ao cliente. Persistência,
-flush e conexão automática do simulador ao envio permanecem na SCRUM-15;
-sem consumidor, os eventos não garantem retenção. Consulte o guia do barco
+buffer; `telemetry.delivery-settled` informa confirmação, rejeição,
+falha ou cancelamento. Os retries ativos pertencem ao cliente; o buffer da
+SCRUM-15 persiste a coleta e coordena o descarregamento. Consulte o guia do barco
 para o contrato dos eventos, mTLS e configuração.
+
+### Buffer FIFO Persistente (SCRUM-15)
+
+O `BufferModule` consome o simulador, confirma a gravação em SQLite antes de
+enviar e mantém apenas uma janela de até `BUFFER_MAX_ITEMS=5000` pacotes em RAM.
+Os demais permanecem em disco no volume `boat-buffer`, sem descarte ao atingir
+o limite de memória. Um worker executa as transações fora do loop da API.
+O serviço do barco inicia independentemente da disponibilidade da Central.
+
+A ordem de entrada do fluxo de coleta é persistida e preservada entre RAM,
+disco e reinícios. Há uma RPC por vez; somente ACK aceito/duplicado do mesmo
+UUID remove o primeiro item. O descarregamento espera pelo menos 20ms após
+cada confirmação. Quedas transitórias retêm a cabeça da fila e retomam após
+os retries do cliente; erros permanentes bloqueiam sem descartar amostras.
+
+A API interna expõe `GET /telemetry/buffer/status` e `GET /telemetry/latest`
+na porta 3002. O primeiro retorna contadores RAM/disco e estado de envio;
+o segundo retorna a última coleta, inclusive após drenar/reiniciar, ou 404
+enquanto não há coleta persistida. Consulte o README do barco para os campos
+da API, parâmetros, formato SQLite e recuperação.
 
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
@@ -349,7 +369,7 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
 
 - **Núcleo IoT Embarcado (NestJS):**
   - **Simulador Náutico GPS:** Gera periodicamente (ciclos de 5s) a trajetória Salvador ↔ Itaparica.
-  - **Camada de Tolerância a Falhas (CAP / AP):** Buffer FIFO em memória com capacidade para até 5.000 amostras, integrado a backup persistente em disco (`telemetry_buffer_backup.json`) para garantir resiliência contra desligamento acidental da embarcação.
+  - **Camada de Tolerância a Falhas (CAP / AP):** Buffer FIFO com janela RAM de até 5.000 amostras e persistência SQLite em disco (`telemetry-buffer.sqlite`), preservando a fila em reinícios sem descartar o excedente do cache.
   - **REST API Control & Status (Porta 3002):** Interface interna para fornecimento de métricas locais e estado do nó para a camada visual.
   - **Cliente gRPC Resiliente:** Responsável pela invocação RPC, controle de deadline (2.500 ms), keepalive e propagação de Correlation ID.
 - **Apresentação & Borda:**
