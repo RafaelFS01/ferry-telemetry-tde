@@ -5,9 +5,12 @@
 #   docker compose -f docker-compose.local.yml up --build
 #
 # Ordem de inicialização garantida por healthchecks:
-#   postgres + localstack (healthy)  ->  ferry-central (healthy)  ->  ferry-boat
+#   postgres (healthy)  ->  central-migrate (alembic upgrade head)
+#   postgres + localstack (healthy) + migrações  ->  ferry-central (healthy)  ->  ferry-boat
 
 name: ferry-telemetry
+
+x-database-url: &database-url postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
 
 x-aws-local: &aws-local
   AWS_REGION: ${AWS_REGION:-us-east-1}
@@ -58,6 +61,21 @@ services:
       retries: 20
       start_period: 15s
 
+  # Aplica as migrações do Alembic e encerra; a central só sobe depois disso
+  central-migrate:
+    build:
+      context: ./ferry-central
+      dockerfile: ../docker/dev/central.Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: *database-url
+    volumes:
+      - ./ferry-central:/app
+    command: ["alembic", "upgrade", "head"]
+
   ferry-central:
     build:
       context: ./ferry-central
@@ -68,10 +86,12 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      central-migrate:
+        condition: service_completed_successfully
     environment:
       <<: *aws-local
       GRPC_PORT: 50051
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
+      DATABASE_URL: *database-url
       SNS_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-us-east-1}:000000000000:ferry-telemetria-topic
       SQS_DB_WRITER_QUEUE_URL: http://localstack:4566/000000000000/ferry-db-writer-queue
       SQS_ALERTS_QUEUE_URL: http://localstack:4566/000000000000/ferry-alerts-queue
