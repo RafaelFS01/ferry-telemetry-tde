@@ -71,12 +71,15 @@ services:
     environment:
       <<: *aws-local
       GRPC_PORT: 50051
+      REST_ENABLED: "true"
+      REST_PORT: 8000
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
       SNS_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-us-east-1}:000000000000:ferry-telemetria-topic
       SQS_DB_WRITER_QUEUE_URL: http://localstack:4566/000000000000/ferry-db-writer-queue
       SQS_ALERTS_QUEUE_URL: http://localstack:4566/000000000000/ferry-alerts-queue
     ports:
       - "50051:50051"
+      - "8000:8000"
     volumes:
       # Bind mount do código para hot-reload
       - ./ferry-central:/app
