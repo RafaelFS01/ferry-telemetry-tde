@@ -574,8 +574,9 @@ resource "aws_ecs_service" "ferry_central_ingestion" {
   ]
 
   # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  # e desired_count é ajustado dinamicamente pelo Application Auto Scaling (SCRUM-30)
   lifecycle {
-    ignore_changes = [task_definition]
+    ignore_changes = [task_definition, desired_count]
   }
 
   tags = {
@@ -607,8 +608,9 @@ resource "aws_ecs_service" "ferry_central_worker" {
   }
 
   # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  # e desired_count é ajustado dinamicamente pelo Application Auto Scaling (SCRUM-30)
   lifecycle {
-    ignore_changes = [task_definition]
+    ignore_changes = [task_definition, desired_count]
   }
 
   tags = {

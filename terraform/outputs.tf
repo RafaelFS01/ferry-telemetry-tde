@@ -242,6 +242,20 @@ output "cloudwatch_log_group_worker" {
 }
 
 # ------------------------------------------------------------------------------
+# Application Auto Scaling ECS Fargate (SCRUM-30)
+# ------------------------------------------------------------------------------
+
+output "ecs_ingestion_autoscaling_policy_arn" {
+  description = "ARN da política de Auto Scaling por CPU do serviço de Ingestão"
+  value       = aws_appautoscaling_policy.ecs_ingestion_cpu_policy.arn
+}
+
+output "ecs_worker_autoscaling_policy_arn" {
+  description = "ARN da política de Auto Scaling por profundidade SQS do serviço Worker"
+  value       = aws_appautoscaling_policy.ecs_worker_sqs_policy.arn
+}
+
+# ------------------------------------------------------------------------------
 # Instância EC2 Simuladora do Nó Barco (SCRUM-19)
 # ------------------------------------------------------------------------------
 
