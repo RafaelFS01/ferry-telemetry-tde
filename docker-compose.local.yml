@@ -163,6 +163,28 @@ services:
       retries: 10
       start_period: 60s
 
+  # Painel Tátil do Capitão (SCRUM-21): Next.js 16 em modo dev com hot-reload
+  captain-panel:
+    build:
+      context: ./ferry-boat/frontend
+      dockerfile: ../../docker/dev/frontend.Dockerfile
+    restart: unless-stopped
+    environment:
+      # Usado só pelo rewrite do Next quando acessado direto em :3000 (sem o Nginx)
+      EDGE_API_URL: http://ferry-boat:3002
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./ferry-boat/frontend:/app
+      - captain-panel-node-modules:/app/node_modules
+      - captain-panel-next:/app/.next
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
   # Borda do Nó Barco: Painel do Capitão (/) e API local do NestJS (/api/edge/)
   nginx-edge:
     <<: *nginx-base
@@ -194,3 +216,5 @@ volumes:
   localstack-data:
   boat-node-modules:
   boat-buffer:
+  captain-panel-node-modules:
+  captain-panel-next:
