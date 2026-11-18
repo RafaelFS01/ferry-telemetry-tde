@@ -15,7 +15,7 @@ services:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 3002
-      BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
+      BUFFER_BACKUP_PATH: /app/data/telemetry-buffer.sqlite
     volumes:
       - boat-data:/app/data
       # Certificados mTLS do barco (obrigatórios com NODE_ENV=production)
