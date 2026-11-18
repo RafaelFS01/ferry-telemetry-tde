@@ -150,6 +150,22 @@ jobs:
           push: false
           cache-from: type=gha,scope=central
           cache-to: type=gha,mode=max,scope=central
+      - name: Central (worker)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-central
+          file: docker/prod/central.Dockerfile
+          target: worker
+          push: false
+          cache-from: type=gha,scope=central-worker
+          cache-to: type=gha,mode=max,scope=central-worker
+      - name: Dashboard Central
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-central/frontend
+          push: false
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard
       - name: Barco
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

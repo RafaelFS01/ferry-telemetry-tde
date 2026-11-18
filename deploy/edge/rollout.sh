@@ -11,8 +11,12 @@ APP_DIR=/opt/ferry-boat
 
 # O pull autentica com o perfil da instância, sem docker login nem senha em disco
 if ! command -v docker-credential-ecr-login >/dev/null; then
-  apt-get update -y
-  apt-get install -y amazon-ecr-credential-helper
+  # Aguarda cloud-init/apt concluir no primeiro boot da EC2
+  cloud-init status --wait || true
+  if ! command -v docker-credential-ecr-login >/dev/null; then
+    apt-get update -y
+    apt-get install -y amazon-ecr-credential-helper
+  fi
 fi
 mkdir -p /root/.docker "$APP_DIR/certs"
 printf '{"credHelpers":{"%s":"ecr-login"}}\n' "$ECR_REGISTRY" > /root/.docker/config.json

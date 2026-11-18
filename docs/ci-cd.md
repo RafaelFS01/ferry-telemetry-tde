@@ -3,7 +3,7 @@
 | Workflow | Gatilho | O que faz |
 |---|---|---|
 | `ci-quality.yml` | push em `main`/`feature/**`/`fix/**`/`docs/**` e PRs | buf lint/breaking, `compose config`, `nginx -t` nas duas bordas, typecheck e testes do barco, ruff + pytest da central, typecheck/teste/build dos dois frontends e build (sem push) das imagens de produção |
-| `cd-central-deploy.yml` | push em `main` que altere a central ou o contrato; manual | build/push de `ferry-central-ingestion` e `ferry-central-worker` no ECR e rollout nos serviços ECS com espera por estabilidade |
+| `cd-central-deploy.yml` | push em `main` que altere a central ou o contrato; manual | build/push de `ferry-central-ingestion`, `ferry-central-worker`, `ferry-central-dashboard` e `ferry-nginx-central` no ECR, migrations Alembic via Fargate `run-task` e rollout nos serviços ECS com espera por estabilidade |
 | `cd-edge-deploy.yml` | push em `main` que altere o barco, o painel ou o Nginx de borda; manual | build/push de `ferry-boat`, `ferry-captain-panel` e `ferry-nginx-edge` e rollout na EC2 do barco via SSM |
 
 O worker só é publicado quando `ferry-central/src/worker/main.py` existir (SCRUM-17).
