@@ -257,6 +257,46 @@ variable "ecs_log_retention_days" {
 }
 
 # ------------------------------------------------------------------------------
+# Variáveis de Auto Scaling ECS Fargate (SCRUM-30)
+# ------------------------------------------------------------------------------
+
+variable "ecs_ingestion_min_capacity" {
+  description = "Quantidade mínima de tarefas ECS do serviço de Ingestão"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_ingestion_max_capacity" {
+  description = "Quantidade máxima de tarefas ECS do serviço de Ingestão"
+  type        = number
+  default     = 4
+}
+
+variable "ecs_ingestion_cpu_target" {
+  description = "Percentual alvo médio de CPU para o Auto Scaling do serviço de Ingestão"
+  type        = number
+  default     = 70
+}
+
+variable "ecs_worker_min_capacity" {
+  description = "Quantidade mínima de tarefas ECS do serviço Worker SQS"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_worker_max_capacity" {
+  description = "Quantidade máxima de tarefas ECS do serviço Worker SQS"
+  type        = number
+  default     = 4
+}
+
+variable "ecs_worker_sqs_target_messages" {
+  description = "Quantidade alvo média de mensagens visíveis na fila SQS para escalar o Worker"
+  type        = number
+  default     = 100
+}
+
+# ------------------------------------------------------------------------------
 # Variáveis da Instância EC2 Simuladora do Nó Barco (SCRUM-19)
 # ------------------------------------------------------------------------------
 
