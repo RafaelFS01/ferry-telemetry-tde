@@ -1,0 +1,167 @@
+name: CI Quality
+# Portão de qualidade (SCRUM-24): contrato, infraestrutura local e cada componente.
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'docs/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Contrato Protobuf
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: buf lint
+        working-directory: proto
+        run: npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf lint
+      - name: buf breaking contra a base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        working-directory: proto
+        run: |
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            baseline=$(mktemp -d)
+            git show "$BASE_SHA:proto/telemetry.proto" > "$baseline/telemetry.proto"
+            npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf breaking --against "$baseline"
+          fi
+
+  infra:
+    name: Compose e Nginx
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: docker compose config
+        run: docker compose -f docker-compose.local.yml config --quiet
+      - name: nginx -t nas duas bordas
+        run: |
+          for site in edge central; do
+            docker build -q -f docker/prod/nginx.Dockerfile --build-arg SITE=$site -t ferry-nginx-$site:ci .
+            # Upstreams fictícios: só a sintaxe e os includes estão em teste
+            docker run --rm \
+              -e CAPTAIN_PANEL_UPSTREAM=http://127.0.0.1:1 -e EDGE_API_UPSTREAM=http://127.0.0.1:1 \
+              -e DASHBOARD_UPSTREAM=http://127.0.0.1:1 -e CENTRAL_API_UPSTREAM=http://127.0.0.1:1 \
+              -e NGINX_RESOLVER=127.0.0.1 \
+              ferry-nginx-$site:ci sh -c '/docker-entrypoint.sh nginx -t'
+          done
+
+  boat:
+    name: Nó Barco (NestJS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ferry-boat/package-lock.json
+      - working-directory: ferry-boat
+        run: npm ci
+      - name: Tipos
+        working-directory: ferry-boat
+        run: npm run typecheck
+      - name: Testes
+        working-directory: ferry-boat
+        run: npm test
+
+  central:
+    name: Nó Central (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: ferry-central/requirements*.txt
+      - working-directory: ferry-central
+        run: pip install -r requirements-dev.txt ruff
+      - name: Ruff (erros de sintaxe e nomes indefinidos)
+        working-directory: ferry-central
+        run: ruff check --select E9,F --exclude src/proto --exclude frontend .
+      - name: Pytest
+        working-directory: ferry-central
+        run: pytest -q
+
+  frontends:
+    name: Frontend ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Painel do Capitão
+            dir: ferry-boat/frontend
+          - name: Dashboard Central
+            dir: ferry-central/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+      - working-directory: ${{ matrix.dir }}
+        run: npm ci
+      - working-directory: ${{ matrix.dir }}
+        run: npm run typecheck
+      - working-directory: ${{ matrix.dir }}
+        run: npm test
+      - working-directory: ${{ matrix.dir }}
+        run: npm run build
+
+  images:
+    name: Imagens de produção
+    needs: [boat, central, frontends]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Central (ingestion)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-central
+          file: docker/prod/central.Dockerfile
+          target: ingestion
+          push: false
+          cache-from: type=gha,scope=central
+          cache-to: type=gha,mode=max,scope=central
+      - name: Barco
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/prod/boat.Dockerfile
+          push: false
+          cache-from: type=gha,scope=boat
+          cache-to: type=gha,mode=max,scope=boat
+      - name: Painel do Capitão
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-boat/frontend
+          push: false
+          cache-from: type=gha,scope=captain
+          cache-to: type=gha,mode=max,scope=captain

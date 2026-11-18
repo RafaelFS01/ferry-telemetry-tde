@@ -256,3 +256,13 @@ variable "ec2_barco_volume_size" {
 
 
 
+
+# ------------------------------------------------------------------------------
+# CI/CD (SCRUM-24)
+# ------------------------------------------------------------------------------
+
+variable "github_repository" {
+  description = "Repositório GitHub (owner/nome) autorizado a assumir a role de deploy via OIDC"
+  type        = string
+  default     = "RafaelFS01/ferry-telemetry-tde"
+}

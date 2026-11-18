@@ -264,3 +264,17 @@ output "ec2_barco_private_ip" {
 
 
 
+
+# ------------------------------------------------------------------------------
+# CI/CD (SCRUM-24)
+# ------------------------------------------------------------------------------
+
+output "github_deploy_role_arn" {
+  description = "ARN da role assumida pelo GitHub Actions via OIDC (variavel AWS_DEPLOY_ROLE_ARN do repositório)"
+  value       = aws_iam_role.github_deploy.arn
+}
+
+output "ecr_repository_urls" {
+  description = "URLs dos repositórios ECR por componente"
+  value       = { for name, repository in aws_ecr_repository.ferry : name => repository.repository_url }
+}
