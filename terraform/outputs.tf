@@ -256,6 +256,19 @@ output "ecs_worker_autoscaling_policy_arn" {
 }
 
 # ------------------------------------------------------------------------------
+# Alarmes Operacionais no CloudWatch (SCRUM-33)
+# ------------------------------------------------------------------------------
+
+output "cloudwatch_alarm_names" {
+  description = "Nomes dos alarmes operacionais no CloudWatch (DLQ, ALB 5XX e CPU ECS)"
+  value = [
+    aws_cloudwatch_metric_alarm.ferry_dlq_messages_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.ferry_alb_target_5xx_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.ferry_ingestion_cpu_high_alarm.alarm_name,
+  ]
+}
+
+# ------------------------------------------------------------------------------
 # Instância EC2 Simuladora do Nó Barco (SCRUM-19)
 # ------------------------------------------------------------------------------
 

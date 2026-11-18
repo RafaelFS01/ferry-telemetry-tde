@@ -133,6 +133,7 @@ ferry-telemetry-tde/
 ├── scripts/
 │   └── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
 ├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
+│   ├── alarms.tf                  ---> Alarmes CloudWatch (DLQ, erros 5XX no ALB e CPU ECS >= 80%)
 │   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
 └── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
 ```
