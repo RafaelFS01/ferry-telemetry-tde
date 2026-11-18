@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir "watchfiles>=1.0"
 RUN --mount=type=bind,source=.,target=/src \
     if [ -f /src/requirements.txt ]; then pip install --no-cache-dir -r /src/requirements.txt; fi
 
-EXPOSE 50051
+EXPOSE 50051 8000
 
 # Reinicia o servidor gRPC a cada alteração em src/
 CMD ["watchfiles", "--filter", "python", "python -m src.server.main", "src"]
