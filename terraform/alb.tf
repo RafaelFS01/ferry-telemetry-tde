@@ -32,12 +32,13 @@ resource "aws_lb" "ferry_alb" {
 # ------------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "ferry_grpc_tg" {
-  name             = "tg-ferry-grpc-${var.environment}"
-  port             = 50051
-  protocol         = "HTTP"
-  protocol_version = "GRPC"
-  vpc_id           = aws_vpc.ferry_vpc.id
-  target_type      = "ip"
+  name                 = "tg-ferry-grpc-${var.environment}"
+  port                 = 50051
+  protocol             = "HTTP"
+  protocol_version     = "GRPC"
+  vpc_id               = aws_vpc.ferry_vpc.id
+  target_type          = "ip"
+  deregistration_delay = 15
 
   health_check {
     enabled             = true
@@ -64,12 +65,13 @@ resource "aws_lb_target_group" "ferry_grpc_tg" {
 # ------------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "ferry_rest_tg" {
-  name             = "tg-ferry-rest-${var.environment}"
-  port             = 8000
-  protocol         = "HTTP"
-  protocol_version = "HTTP1"
-  vpc_id           = aws_vpc.ferry_vpc.id
-  target_type      = "ip"
+  name                 = "tg-ferry-rest-${var.environment}"
+  port                 = 8000
+  protocol             = "HTTP"
+  protocol_version     = "HTTP1"
+  vpc_id               = aws_vpc.ferry_vpc.id
+  target_type          = "ip"
+  deregistration_delay = 15
 
   health_check {
     enabled             = true
@@ -96,12 +98,13 @@ resource "aws_lb_target_group" "ferry_rest_tg" {
 # ------------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "ferry_dashboard_tg" {
-  name             = "tg-ferry-dash-${var.environment}"
-  port             = 80
-  protocol         = "HTTP"
-  protocol_version = "HTTP1"
-  vpc_id           = aws_vpc.ferry_vpc.id
-  target_type      = "ip"
+  name                 = "tg-ferry-dash-${var.environment}"
+  port                 = 80
+  protocol             = "HTTP"
+  protocol_version     = "HTTP1"
+  vpc_id               = aws_vpc.ferry_vpc.id
+  target_type          = "ip"
+  deregistration_delay = 15
 
   health_check {
     enabled             = true
