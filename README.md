@@ -128,6 +128,10 @@ ferry-telemetry-tde/
 │   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 16)
 │
 ├── docker/                        ---> Configurações de proxies de borda Nginx
+├── docs/                          ---> Especificação arquitetural, CI/CD e roteiro de testes de caos
+│   └── chaos-testing.md           ---> Evidências e comandos de carga até a quebra + Chaos Node Kill
+├── scripts/
+│   └── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
 ├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
 │   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
 └── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
