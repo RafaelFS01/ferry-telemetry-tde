@@ -336,3 +336,13 @@ variable "github_repository" {
   type        = string
   default     = "RafaelFS01/ferry-telemetry-tde"
 }
+
+# ------------------------------------------------------------------------------
+# Segurança mTLS & Domínio gRPC (SCRUM-34 / SCRUM-29)
+# ------------------------------------------------------------------------------
+
+variable "grpc_custom_domain" {
+  description = "Subdomínio customizado do endpoint gRPC incluído no SAN do certificado do ALB"
+  type        = string
+  default     = "telemetry.rioswesley.com.br"
+}

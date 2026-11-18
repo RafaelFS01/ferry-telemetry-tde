@@ -165,11 +165,12 @@ resource "tls_cert_request" "ferry_alb" {
     organization = "Ferry Telemetry TDE"
   }
 
-  dns_names = [
+  dns_names = compact([
     aws_lb.ferry_alb.dns_name,
     "*.${var.aws_region}.elb.amazonaws.com",
     "ferry-alb.internal",
-  ]
+    var.grpc_custom_domain,
+  ])
 }
 
 resource "tls_locally_signed_cert" "ferry_alb" {
@@ -231,16 +232,72 @@ resource "aws_acm_certificate" "ferry_alb_cert" {
 }
 
 # ------------------------------------------------------------------------------
+# 4.1. S3 Trust Store para mTLS Estrito no ALB (SCRUM-34)
+# ------------------------------------------------------------------------------
+
+resource "aws_s3_bucket" "ferry_mtls_trust_store" {
+  bucket_prefix = "ferry-mtls-truststore-${var.environment}-"
+  force_destroy = true
+
+  tags = {
+    Name        = "ferry-mtls-truststore-${var.environment}"
+    Component   = "Security"
+    Environment = var.environment
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "ferry_mtls_trust_store" {
+  bucket = aws_s3_bucket.ferry_mtls_trust_store.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_object" "ferry_ca_bundle" {
+  bucket       = aws_s3_bucket.ferry_mtls_trust_store.id
+  key          = "ca-bundle.pem"
+  content      = tls_self_signed_cert.ferry_ca.cert_pem
+  content_type = "application/x-pem-file"
+
+  depends_on = [aws_s3_bucket_public_access_block.ferry_mtls_trust_store]
+}
+
+resource "aws_lb_trust_store" "ferry_ca" {
+  name                             = "ferry-mtls-ca-${var.environment}"
+  ca_certificates_bundle_s3_bucket = aws_s3_bucket.ferry_mtls_trust_store.bucket
+  ca_certificates_bundle_s3_key    = aws_s3_object.ferry_ca_bundle.key
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.ferry_mtls_trust_store,
+    aws_s3_object.ferry_ca_bundle,
+  ]
+
+  tags = {
+    Name        = "ferry-mtls-ca-${var.environment}"
+    Component   = "Security"
+    Environment = var.environment
+  }
+}
+
+# ------------------------------------------------------------------------------
 # 5. Listeners do ALB
 # ------------------------------------------------------------------------------
 
-# Listener gRPC (:50051 HTTPS com negociacao HTTP/2 ALPN)
+# Listener gRPC (:50051 HTTPS com HTTP/2 ALPN e mTLS estrito)
 resource "aws_lb_listener" "grpc_listener" {
   load_balancer_arn = aws_lb.ferry_alb.arn
   port              = 50051
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = aws_acm_certificate.ferry_alb_cert.arn
+
+  mutual_authentication {
+    mode                             = "verify"
+    trust_store_arn                  = aws_lb_trust_store.ferry_ca.arn
+    ignore_client_certificate_expiry = false
+  }
 
   default_action {
     type             = "forward"

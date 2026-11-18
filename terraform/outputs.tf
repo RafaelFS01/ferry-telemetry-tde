@@ -269,6 +269,20 @@ output "cloudwatch_alarm_names" {
 }
 
 # ------------------------------------------------------------------------------
+# Trust Store mTLS do ALB (SCRUM-34)
+# ------------------------------------------------------------------------------
+
+output "alb_mtls_trust_store_arn" {
+  description = "ARN do Trust Store mTLS vinculado ao listener gRPC do ALB"
+  value       = aws_lb_trust_store.ferry_ca.arn
+}
+
+output "alb_mtls_trust_store_bucket" {
+  description = "Nome do bucket S3 privado contendo o bundle CA do mTLS"
+  value       = aws_s3_bucket.ferry_mtls_trust_store.bucket
+}
+
+# ------------------------------------------------------------------------------
 # Instância EC2 Simuladora do Nó Barco (SCRUM-19)
 # ------------------------------------------------------------------------------
 
