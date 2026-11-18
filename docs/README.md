@@ -94,7 +94,7 @@ O ecossistema foi calibrado para operar no **topo do ciclo de vida tecnológico 
 O simulador do barco separa modelo físico puro e serviço NestJS. O serviço usa
 relógio monotônico e publica `telemetry.generated` a cada 5000 ms, após aguardar
 os listeners do EventEmitter. Sua operação não depende de gRPC nem de fila.
-O evento em memória será consumido pelo buffer e pelo envio em tarefas próprias.
+O evento em memória é consumido pelo buffer persistente da SCRUM-15.
 
 Cada amostra possui `message_id` UUIDv4, alias local `packet_id` e sequência
 incremental por execução. A sequência não reinicia entre viagens e não é
@@ -134,8 +134,8 @@ a original; `GRPC_RETRY_MAX_ATTEMPTS` aceita 1–10. Um único controlador de
 retries evita sobreposição com a política nativa do canal.
 
 O pacote mantém UUID, timestamp e sequência durante os reenvios. A primeira
-falha transitória publica `telemetry.offline` imediatamente. O futuro buffer
-da SCRUM-15 deverá persistir por UUID e aguardar `telemetry.delivery-settled`
+falha transitória publica `telemetry.offline` imediatamente. O buffer
+da SCRUM-15 persiste por UUID e aguarda `telemetry.delivery-settled`
 antes de assumir a retransmissão. Apenas ACK aceito/duplicado do mesmo UUID
 confirma entrega; rejeição, erro e cancelamento não autorizam remover a pendência.
 Erros permanentes são propagados sem retry nem acionamento offline.
@@ -143,6 +143,32 @@ Erros permanentes são propagados sem retry nem acionamento offline.
 Eventos locais não substituem persistência. A SCRUM-14 não implementa a fila
 nem conecta automaticamente o gerador ao cliente. Configuração e contrato
 completo constam no README do `ferry-boat`.
+
+### 3.8. FIFO Persistente e API Embarcada (SCRUM-15)
+
+O armazenamento usa SQLite nativo do Node 24 em worker dedicado, com transações,
+WAL e `synchronous=FULL`. Cada admissão só conclui após commit. O modo exclusivo
+permite apenas um consumidor por arquivo e libera o bloqueio ao encerrar o
+processo, inclusive após queda abrupta. Banco e WAL residem no volume local
+persistente `boat-buffer`; arquivos corrompidos não são apagados automaticamente.
+
+O banco mantém a ordem de entrada da coleta e o último pacote. A janela em RAM
+é limitada a 5000 itens por padrão; o excedente é paginado do disco. Esse limite
+não causa descarte nem limita a quantidade total de pacotes duráveis. A sequência
+do simulador pode reiniciar por execução; a posição FIFO persistida não reinicia.
+
+Uma única operação de envio controla a cabeça da fila. O buffer aguarda os
+retries da SCRUM-14 e só remove após ACK aceito/duplicado do mesmo UUID, com
+pausa mínima de 20ms entre confirmações e próximos envios. Se o ACK se perder
+ou houver queda antes da remoção local, o mesmo UUID pode ser retransmitido;
+a Central mantém a idempotência. Rejeições e erros permanentes bloqueiam a fila
+sem pular itens. Falhas de disco são expostas como `storage_error`.
+
+`GET /telemetry/buffer/status` retorna contadores de pendências, cache RAM,
+excedente em disco e estado operacional. `GET /telemetry/latest` retorna a
+última coleta persistida, ou 404 antes da primeira. Ambos usam `Cache-Control:
+no-store`. Os valores int64/uint64 continuam strings. O evento local continua
+em memória; a durabilidade se aplica às admissões confirmadas no SQLite.
 
 ## 4. Governança Ágil, Ferramentas e Rastreabilidade Integrada (Jira + GitHub)
 
