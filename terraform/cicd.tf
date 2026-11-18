@@ -10,6 +10,8 @@ locals {
   ecr_repositories = toset([
     "ferry-central-ingestion",
     "ferry-central-worker",
+    "ferry-central-dashboard",
+    "ferry-nginx-central",
     "ferry-boat",
     "ferry-captain-panel",
     "ferry-nginx-edge",
@@ -127,7 +129,22 @@ data "aws_iam_policy_document" "github_deploy" {
     resources = [
       aws_ecs_service.ferry_central_ingestion.id,
       aws_ecs_service.ferry_central_worker.id,
+      aws_ecs_service.ferry_central_dashboard.id,
     ]
+  }
+
+  statement {
+    sid     = "EcsMigrationsRunTask"
+    actions = ["ecs:RunTask"]
+    resources = [
+      "arn:aws:ecs:${var.aws_region}:*:task-definition/ferry-central-ingestion-${var.environment}:*",
+    ]
+  }
+
+  statement {
+    sid       = "EcsTasksDescribe"
+    actions   = ["ecs:DescribeTasks"]
+    resources = ["arn:aws:ecs:${var.aws_region}:*:task/ferry-cluster-${var.environment}/*"]
   }
 
   statement {
