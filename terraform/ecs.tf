@@ -420,6 +420,14 @@ resource "aws_ecs_task_definition" "ferry_central_dashboard" {
 
       environment = [
         {
+          name  = "HOSTNAME"
+          value = "0.0.0.0"
+        },
+        {
+          name  = "PORT"
+          value = "3000"
+        },
+        {
           name  = "CENTRAL_API_URL"
           value = "http://ingestion.ferry.internal:8000"
         }
