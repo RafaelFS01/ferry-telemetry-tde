@@ -284,7 +284,7 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
       name      = "ferry-central-worker"
       image     = var.ecs_worker_image
       essential = true
-      command   = ["python3", "-c", "import time; print('Fargate Worker Service Running'); time.sleep(86400)"]
+      command   = ["python3", "-m", "src.worker.main"]
 
       environment = [
         {
@@ -294,6 +294,10 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
         {
           name  = "SQS_QUEUE_URL"
           value = aws_sqs_queue.ferry_db_writer_queue.url
+        },
+        {
+          name  = "SQS_DLQ_URL"
+          value = aws_sqs_queue.ferry_telemetry_dlq.url
         },
         {
           name  = "DB_HOST"
