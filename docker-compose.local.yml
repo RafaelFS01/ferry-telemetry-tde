@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.local.yml up --build
 #
 # Ordem de inicialização garantida por healthchecks:
-#   postgres + localstack (healthy)  ->  ferry-central (healthy)  ->  ferry-boat
+#   postgres + localstack (healthy) -> ferry-central (healthy); ferry-boat inicia independente.
 #
 # Pontos de entrada (SCRUM-20):
 #   http://localhost:8080  Borda do Barco   (/ painel, /api/edge/ API NestJS)
@@ -92,8 +92,8 @@ services:
       GRPC_PORT: 50051
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
       SNS_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-us-east-1}:000000000000:ferry-telemetria-topic
-      SQS_DB_WRITER_QUEUE_URL: http://localstack:4566/000000000000/ferry-db-writer-queue
-      SQS_ALERTS_QUEUE_URL: http://localstack:4566/000000000000/ferry-alerts-queue
+      SQS_DB_WRITER_QUEUE_URL: ${SQS_DB_WRITER_QUEUE_URL:-http://localstack:4566/000000000000/ferry-db-writer-queue}
+      SQS_ALERTS_QUEUE_URL: ${SQS_ALERTS_QUEUE_URL:-http://localstack:4566/000000000000/ferry-alerts-queue}
     ports:
       - "50051:50051"
     volumes:
@@ -107,22 +107,45 @@ services:
       retries: 10
       start_period: 20s
 
+  ferry-worker:
+    build:
+      context: ./ferry-central
+      dockerfile: ../docker/dev/central.Dockerfile
+    restart: unless-stopped
+    command: ["watchfiles", "--filter", "python", "python -m src.worker.main", "src"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    environment:
+      <<: *aws-local
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
+      SQS_QUEUE_URL: ${SQS_DB_WRITER_QUEUE_URL:-http://localstack:4566/000000000000/ferry-db-writer-queue}
+      SQS_DLQ_URL: ${SQS_DLQ_URL:-http://localstack:4566/000000000000/ferry-db-writer-queue-dlq}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-50}
+      WORKER_BATCH_TIMEOUT_SECONDS: ${WORKER_BATCH_TIMEOUT_SECONDS:-2.0}
+      SQS_WAIT_TIME_SECONDS: ${SQS_WAIT_TIME_SECONDS:-20}
+    volumes:
+      - ./ferry-central:/app
+      - ./proto:/proto:ro
+
   ferry-boat:
     build:
       context: ./ferry-boat
       dockerfile: ../docker/dev/boat.Dockerfile
     restart: unless-stopped
-    depends_on:
-      ferry-central:
-        condition: service_healthy
     environment:
       BOAT_ID: ${BOAT_ID:-ferry-ivete-sangalo}
       CENTRAL_GRPC_URL: ferry-central:50051
       TELEMETRY_INTERVAL_MS: 5000
       GRPC_DEADLINE_MS: ${GRPC_DEADLINE_MS:-2500}
       GRPC_RETRY_MAX_ATTEMPTS: ${GRPC_RETRY_MAX_ATTEMPTS:-6}
-      BUFFER_MAX_ITEMS: 5000
-      BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
+      BUFFER_ENABLED: ${BUFFER_ENABLED:-true}
+      BUFFER_MAX_ITEMS: ${BUFFER_MAX_ITEMS:-5000}
+      BUFFER_BACKUP_PATH: ${BUFFER_BACKUP_PATH:-/app/data/telemetry-buffer.sqlite}
+      BUFFER_DRAIN_INTERVAL_MS: ${BUFFER_DRAIN_INTERVAL_MS:-20}
+      BUFFER_RETRY_INTERVAL_MS: ${BUFFER_RETRY_INTERVAL_MS:-5000}
       API_PORT: 3002
     ports:
       - "3002:3002"
@@ -131,7 +154,7 @@ services:
       - ./proto:/proto:ro
       # node_modules isolado do host (evita binários do Windows/macOS no container)
       - boat-node-modules:/app/node_modules
-      # Backup do buffer FIFO sobrevive a reinícios do container
+      # Banco SQLite e WAL do buffer sobrevivem a reinicios do container
       - boat-buffer:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "require('net').connect(3002,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
