@@ -220,6 +220,36 @@ variable "ecs_worker_image" {
   default     = "public.ecr.aws/docker/library/python:3.14-slim"
 }
 
+variable "ecs_dashboard_image" {
+  description = "URI da imagem Docker provisória/inicial para o Dashboard Cartográfico (substituída pelo CI/CD)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/node:24-alpine"
+}
+
+variable "ecs_nginx_central_image" {
+  description = "URI da imagem Docker provisória/inicial para o proxy Nginx da Central (substituída pelo CI/CD)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/nginx:1.27-alpine"
+}
+
+variable "ecs_dashboard_cpu" {
+  description = "Unidades de CPU alocadas para a tarefa do Dashboard Central (512 = 0.5 vCPU)"
+  type        = string
+  default     = "512"
+}
+
+variable "ecs_dashboard_memory" {
+  description = "Memória em MiB alocada para a tarefa do Dashboard Central (1024 = 1 GB)"
+  type        = string
+  default     = "1024"
+}
+
+variable "ecs_dashboard_desired_count" {
+  description = "Número desejado de tarefas em execução para o Dashboard Central"
+  type        = number
+  default     = 1
+}
+
 variable "ecs_log_retention_days" {
   description = "Dias de retenção dos logs de contêiner no CloudWatch Logs"
   type        = number
