@@ -36,4 +36,4 @@ jobs:
       - name: Build do barco Alpine
         run: docker compose -f docker-compose.local.yml build ferry-boat
       - name: Testes e tipos no container
-        run: docker compose -f docker-compose.local.yml run --rm --no-deps -T ferry-boat sh -c "npm ci && npm test && npm run typecheck"
+        run: docker compose -f docker-compose.local.yml run --rm --no-deps -T -e BUFFER_ENABLED=false ferry-boat sh -c "npm ci && npm test && npm run typecheck"

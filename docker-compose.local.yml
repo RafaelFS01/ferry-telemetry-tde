@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.local.yml up --build
 #
 # Ordem de inicialização garantida por healthchecks:
-#   postgres + localstack (healthy)  ->  ferry-central (healthy)  ->  ferry-boat
+#   postgres + localstack (healthy) -> ferry-central; ferry-boat inicia independente.
 
 name: ferry-telemetry
 
@@ -93,17 +93,17 @@ services:
       context: ./ferry-boat
       dockerfile: ../docker/dev/boat.Dockerfile
     restart: unless-stopped
-    depends_on:
-      ferry-central:
-        condition: service_healthy
     environment:
       BOAT_ID: ${BOAT_ID:-ferry-ivete-sangalo}
       CENTRAL_GRPC_URL: ferry-central:50051
       TELEMETRY_INTERVAL_MS: 5000
       GRPC_DEADLINE_MS: ${GRPC_DEADLINE_MS:-2500}
       GRPC_RETRY_MAX_ATTEMPTS: ${GRPC_RETRY_MAX_ATTEMPTS:-6}
-      BUFFER_MAX_ITEMS: 5000
-      BUFFER_BACKUP_PATH: /app/data/telemetry_buffer_backup.json
+      BUFFER_ENABLED: ${BUFFER_ENABLED:-true}
+      BUFFER_MAX_ITEMS: ${BUFFER_MAX_ITEMS:-5000}
+      BUFFER_BACKUP_PATH: ${BUFFER_BACKUP_PATH:-/app/data/telemetry-buffer.sqlite}
+      BUFFER_DRAIN_INTERVAL_MS: ${BUFFER_DRAIN_INTERVAL_MS:-20}
+      BUFFER_RETRY_INTERVAL_MS: ${BUFFER_RETRY_INTERVAL_MS:-5000}
       API_PORT: 3002
     ports:
       - "3002:3002"
@@ -112,7 +112,7 @@ services:
       - ./proto:/proto:ro
       # node_modules isolado do host (evita binários do Windows/macOS no container)
       - boat-node-modules:/app/node_modules
-      # Backup do buffer FIFO sobrevive a reinícios do container
+      # Banco SQLite e WAL do buffer sobrevivem a reinicios do container
       - boat-buffer:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "require('net').connect(3002,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
