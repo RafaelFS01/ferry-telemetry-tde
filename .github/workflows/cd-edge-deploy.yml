@@ -1,0 +1,120 @@
+name: CD Edge (EC2 Barco)
+# Publica as imagens do Nó Barco no ECR e atualiza a EC2 simuladora via SSM (SCRUM-24).
+# A instância não expõe SSH ao runner: o comando chega pelo agente SSM e o pull
+# usa o perfil de instância (amazon-ecr-credential-helper).
+on:
+  push:
+    branches: [main]
+    paths:
+      - ferry-boat
+      - proto/**
+      - docker/prod/boat.Dockerfile
+      - docker/prod/nginx.Dockerfile
+      - docker/nginx-edge.conf
+      - docker/nginx/**
+      - deploy/edge/**
+      - .github/workflows/cd-edge-deploy.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: cd-edge
+  cancel-in-progress: false
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  images:
+    name: Imagem ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      registry: ${{ steps.ecr.outputs.registry }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: ferry-boat
+            context: .
+            file: docker/prod/boat.Dockerfile
+            build-args: ''
+          - image: ferry-captain-panel
+            context: ferry-boat/frontend
+            file: ferry-boat/frontend/Dockerfile
+            build-args: ''
+          - image: ferry-nginx-edge
+            context: .
+            file: docker/prod/nginx.Dockerfile
+            build-args: SITE=edge
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - id: img_check
+        run: |
+          if aws ecr describe-images --repository-name "${{ matrix.image }}" --image-ids "imageTag=${{ github.sha }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.img_check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.img_check.outputs.exists != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build-args }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  rollout:
+    name: Rollout na EC2
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Envia comando SSM
+        id: send
+        env:
+          INSTANCE_ID: ${{ vars.EDGE_INSTANCE_ID }}
+          REGISTRY: ${{ needs.images.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          compose_b64=$(base64 -w0 deploy/edge/docker-compose.yml)
+          rollout_b64=$(base64 -w0 deploy/edge/rollout.sh)
+          params=$(jq -n \
+            --arg env "export ECR_REGISTRY=$REGISTRY IMAGE_TAG=$IMAGE_TAG COMPOSE_B64=$compose_b64" \
+            --arg run "echo $rollout_b64 | base64 -d | bash" \
+            '{commands: [$env, $run]}')
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "ferry-edge ${IMAGE_TAG:0:7}" \
+            --parameters "$params" \
+            --query Command.CommandId --output text)
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
+      - name: Aguarda e exibe a saída
+        env:
+          INSTANCE_ID: ${{ vars.EDGE_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          status=0
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || status=$?
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query '{Status: Status, Saida: StandardOutputContent, Erro: StandardErrorContent}' --output yaml
+          exit $status

@@ -223,3 +223,66 @@ resource "aws_security_group_rule" "rds_ingress_fargate" {
   security_group_id        = aws_security_group.sg_ferry_rds.id
 }
 
+# ALB -> Fargate (Nginx / Dashboard Central :80) (SCRUM-27)
+resource "aws_security_group_rule" "alb_egress_fargate_http" {
+  type                     = "egress"
+  description              = "Roteamento HTTP do ALB para o Nginx do Dashboard Central"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.sg_ferry_fargate.id
+  security_group_id        = aws_security_group.sg_ferry_alb.id
+}
+
+resource "aws_security_group_rule" "fargate_ingress_alb_http" {
+  type                     = "ingress"
+  description              = "Ingress HTTP no Fargate autorizado exclusivamente a partir do ALB"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.sg_ferry_alb.id
+  security_group_id        = aws_security_group.sg_ferry_fargate.id
+}
+
+# Fargate <-> Fargate (Nginx Central -> REST API Ingestion :8000 via Cloud Map) (SCRUM-27)
+resource "aws_security_group_rule" "fargate_self_ingress_rest" {
+  type              = "ingress"
+  description       = "Permite que o Dashboard/Nginx acesse a API REST na porta 8000"
+  from_port         = 8000
+  to_port           = 8000
+  protocol          = "tcp"
+  self              = true
+  security_group_id = aws_security_group.sg_ferry_fargate.id
+}
+
+resource "aws_security_group_rule" "fargate_self_egress_rest" {
+  type              = "egress"
+  description       = "Permite saida interna Fargate para a API REST na porta 8000"
+  from_port         = 8000
+  to_port           = 8000
+  protocol          = "tcp"
+  self              = true
+  security_group_id = aws_security_group.sg_ferry_fargate.id
+}
+
+# Fargate -> VPC DNS Resolver (Cloud Map ferry.internal e nomes AWS) (SCRUM-27)
+resource "aws_security_group_rule" "fargate_egress_dns_udp" {
+  type              = "egress"
+  description       = "Resolucao DNS UDP para VPC Resolver e Cloud Map"
+  from_port         = 53
+  to_port           = 53
+  protocol          = "udp"
+  cidr_blocks       = [var.vpc_cidr, "169.254.169.253/32"]
+  security_group_id = aws_security_group.sg_ferry_fargate.id
+}
+
+resource "aws_security_group_rule" "fargate_egress_dns_tcp" {
+  type              = "egress"
+  description       = "Resolucao DNS TCP para VPC Resolver e Cloud Map"
+  from_port         = 53
+  to_port           = 53
+  protocol          = "tcp"
+  cidr_blocks       = [var.vpc_cidr, "169.254.169.253/32"]
+  security_group_id = aws_security_group.sg_ferry_fargate.id
+}
+

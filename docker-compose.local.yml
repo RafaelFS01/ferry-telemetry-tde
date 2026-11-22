@@ -144,6 +144,8 @@ services:
       TELEMETRY_INTERVAL_MS: 5000
       GRPC_DEADLINE_MS: ${GRPC_DEADLINE_MS:-2500}
       GRPC_RETRY_MAX_ATTEMPTS: ${GRPC_RETRY_MAX_ATTEMPTS:-6}
+      GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD: ${GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD:-3}
+      GRPC_CIRCUIT_BREAKER_COOLDOWN_MS: ${GRPC_CIRCUIT_BREAKER_COOLDOWN_MS:-30000}
       BUFFER_ENABLED: ${BUFFER_ENABLED:-true}
       BUFFER_MAX_ITEMS: ${BUFFER_MAX_ITEMS:-5000}
       BUFFER_BACKUP_PATH: ${BUFFER_BACKUP_PATH:-/app/data/telemetry-buffer.sqlite}
@@ -188,6 +190,28 @@ services:
       retries: 10
       start_period: 90s
 
+  # Dashboard Cartográfico da Central (SCRUM-23): Next.js 16 + Leaflet
+  dashboard:
+    build:
+      context: ./ferry-central/frontend
+      dockerfile: ../../docker/dev/frontend.Dockerfile
+    restart: unless-stopped
+    environment:
+      # Usado só pelo rewrite do Next quando acessado direto em :3001 (sem o Nginx)
+      CENTRAL_API_URL: http://ferry-central:8000
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./ferry-central/frontend:/app
+      - dashboard-node-modules:/app/node_modules
+      - dashboard-next:/app/.next
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
   # Borda do Nó Barco: Painel do Capitão (/) e API local do NestJS (/api/edge/)
   nginx-edge:
     <<: *nginx-base
@@ -221,3 +245,5 @@ volumes:
   boat-buffer:
   captain-panel-node-modules:
   captain-panel-next:
+  dashboard-node-modules:
+  dashboard-next:
