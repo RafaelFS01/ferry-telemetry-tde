@@ -1,0 +1,204 @@
+name: CD Central (ECS)
+# Publica as imagens do Nó Central no ECR, executa migrations Alembic e atualiza os serviços ECS (SCRUM-24 / SCRUM-27).
+# Autenticação via OIDC: o papel ferry-github-deploy só aceita a branch main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ferry-central
+      - proto/**
+      - docker/prod/central.Dockerfile
+      - docker/prod/nginx.Dockerfile
+      - docker/nginx-central.conf
+      - docker/nginx/**
+      - .github/workflows/cd-central-deploy.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: cd-central
+  cancel-in-progress: false
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ENVIRONMENT: ${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: ingestion
+            module: server
+          - component: worker
+            module: worker
+    env:
+      FAMILY: ferry-central-${{ matrix.component }}-${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
+      CONTAINER: ferry-central-${{ matrix.component }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - name: Verifica ponto de entrada
+        id: entry
+        run: |
+          if [ -f "ferry-central/src/${{ matrix.module }}/main.py" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::ferry-central/src/${{ matrix.module }}/main.py ainda não existe; deploy de ${{ matrix.component }} ignorado"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.entry.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - if: steps.entry.outputs.ready == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - if: steps.entry.outputs.ready == 'true'
+        id: img_check
+        run: |
+          if aws ecr describe-images --repository-name "ferry-central-${{ matrix.component }}" --image-ids "imageTag=${{ github.sha }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.entry.outputs.ready == 'true' && steps.img_check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.entry.outputs.ready == 'true' && steps.img_check.outputs.exists != 'true'
+        name: Build e push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-central
+          file: docker/prod/central.Dockerfile
+          target: ${{ matrix.component }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/ferry-central-${{ matrix.component }}:${{ github.sha }}
+          cache-from: type=gha,scope=central-${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=central-${{ matrix.component }}
+      - if: steps.entry.outputs.ready == 'true'
+        name: Task definition atual
+        run: |
+          # O Terraform cria a task com um "command" provisório; a imagem real usa o CMD do Dockerfile
+          aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition \
+            | jq --arg c "$CONTAINER" '.containerDefinitions |= map(if .name == $c then del(.command) else . end)' \
+            > task-definition.json
+      - if: steps.entry.outputs.ready == 'true'
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1.9.1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER }}
+          image: ${{ steps.ecr.outputs.registry }}/ferry-central-${{ matrix.component }}:${{ github.sha }}
+      - if: steps.entry.outputs.ready == 'true' && matrix.component == 'ingestion'
+        name: Executa migrations Alembic no Fargate
+        run: |
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)' \
+            "${{ steps.render.outputs.task-definition }}" > migrate-td.json
+          MIG_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://migrate-td.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          NET_CFG=$(aws ecs describe-services \
+            --cluster "ferry-cluster-${ENVIRONMENT}" \
+            --services "${FAMILY}" \
+            --query 'services[0].networkConfiguration' --output json)
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "ferry-cluster-${ENVIRONMENT}" \
+            --launch-type FARGATE \
+            --task-definition "$MIG_TD_ARN" \
+            --network-configuration "$NET_CFG" \
+            --overrides '{"containerOverrides":[{"name":"ferry-central-ingestion","command":["alembic","upgrade","head"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Aguardando tarefa de migration: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "ferry-cluster-${ENVIRONMENT}" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "ferry-cluster-${ENVIRONMENT}" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "Alembic exit code: $EXIT_CODE"
+          [ "$EXIT_CODE" = "0" ]
+      - if: steps.entry.outputs.ready == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a00d4d57ac0de1a99b39fe469f3d898d38717c2b # v2.6.4
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ferry-cluster-${{ env.ENVIRONMENT }}
+          service: ${{ env.FAMILY }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+
+  deploy-dashboard:
+    name: Deploy Dashboard + Nginx Central
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FAMILY: ferry-central-dashboard-${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - id: dash_check
+        run: |
+          if aws ecr describe-images --repository-name "ferry-central-dashboard" --image-ids "imageTag=${{ github.sha }}" >/dev/null 2>&1; then
+            echo "dash_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dash_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          if aws ecr describe-images --repository-name "ferry-nginx-central" --image-ids "imageTag=${{ github.sha }}" >/dev/null 2>&1; then
+            echo "nginx_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nginx_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.dash_check.outputs.dash_exists != 'true' || steps.dash_check.outputs.nginx_exists != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.dash_check.outputs.dash_exists != 'true'
+        name: Build e push Dashboard Central
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ferry-central/frontend
+          file: ferry-central/frontend/Dockerfile
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/ferry-central-dashboard:${{ github.sha }}
+          cache-from: type=gha,scope=central-dashboard
+          cache-to: type=gha,mode=max,scope=central-dashboard
+      - if: steps.dash_check.outputs.nginx_exists != 'true'
+        name: Build e push Nginx Central
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/prod/nginx.Dockerfile
+          build-args: SITE=central
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/ferry-nginx-central:${{ github.sha }}
+          cache-from: type=gha,scope=nginx-central
+          cache-to: type=gha,mode=max,scope=nginx-central
+      - name: Task definition atual
+        run: |
+          aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition \
+            | jq '.containerDefinitions |= map(del(.command))' \
+            > task-definition.json
+      - id: render_dashboard
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1.9.1
+        with:
+          task-definition: task-definition.json
+          container-name: dashboard
+          image: ${{ steps.ecr.outputs.registry }}/ferry-central-dashboard:${{ github.sha }}
+      - id: render_nginx
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1.9.1
+        with:
+          task-definition: ${{ steps.render_dashboard.outputs.task-definition }}
+          container-name: nginx-central
+          image: ${{ steps.ecr.outputs.registry }}/ferry-nginx-central:${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@a00d4d57ac0de1a99b39fe469f3d898d38717c2b # v2.6.4
+        with:
+          task-definition: ${{ steps.render_nginx.outputs.task-definition }}
+          cluster: ferry-cluster-${{ env.ENVIRONMENT }}
+          service: ${{ env.FAMILY }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15

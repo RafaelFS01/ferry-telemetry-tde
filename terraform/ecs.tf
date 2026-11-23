@@ -63,6 +63,18 @@ resource "aws_cloudwatch_log_group" "ecs_worker_logs" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "ecs_dashboard_logs" {
+  name              = "/ecs/ferry-central-dashboard-${var.environment}"
+  retention_in_days = var.ecs_log_retention_days
+
+  tags = {
+    Name        = "ecs-dashboard-logs"
+    Component   = "Logging"
+    Service     = "ferry-central-dashboard"
+    Environment = var.environment
+  }
+}
+
 # ------------------------------------------------------------------------------
 # 3. Políticas e Roles IAM com Princípio do Menor Privilégio
 # ------------------------------------------------------------------------------
@@ -161,10 +173,20 @@ resource "aws_iam_role_policy" "ecs_worker_policy" {
           "sqs:ReceiveMessage",
           "sqs:DeleteMessage",
           "sqs:DeleteMessageBatch",
+          "sqs:ChangeMessageVisibility",
           "sqs:GetQueueAttributes",
           "sqs:GetQueueUrl"
         ]
         Resource = aws_sqs_queue.ferry_db_writer_queue.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = aws_sqs_queue.ferry_telemetry_dlq.arn
       },
       {
         Effect = "Allow"
@@ -217,16 +239,36 @@ resource "aws_ecs_task_definition" "ferry_central_ingestion" {
           value = var.environment
         },
         {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "INGESTION_MODE"
+          value = "decoupled"
+        },
+        {
           name  = "GRPC_PORT"
           value = "50051"
+        },
+        {
+          name  = "REST_ENABLED"
+          value = "true"
         },
         {
           name  = "REST_PORT"
           value = "8000"
         },
         {
-          name  = "TOPIC_ARN"
+          name  = "SNS_TOPIC_ARN"
           value = aws_sns_topic.ferry_telemetry_topic.arn
+        },
+        {
+          name  = "DATABASE_URL"
+          value = "postgresql+asyncpg://${urlencode(var.db_username)}:${urlencode(var.db_password)}@${aws_db_instance.ferry_postgres.address}:${aws_db_instance.ferry_postgres.port}/${urlencode(var.db_name)}?ssl=require"
         },
         {
           name  = "DB_HOST"
@@ -284,7 +326,7 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
       name      = "ferry-central-worker"
       image     = var.ecs_worker_image
       essential = true
-      command   = ["python3", "-c", "import time; print('Fargate Worker Service Running'); time.sleep(86400)"]
+      command   = ["python3", "-m", "src.worker.main"]
 
       environment = [
         {
@@ -292,8 +334,24 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
           value = var.environment
         },
         {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
+        },
+        {
           name  = "SQS_QUEUE_URL"
           value = aws_sqs_queue.ferry_db_writer_queue.url
+        },
+        {
+          name  = "SQS_DLQ_URL"
+          value = aws_sqs_queue.ferry_telemetry_dlq.url
+        },
+        {
+          name  = "DATABASE_URL"
+          value = "postgresql+asyncpg://${urlencode(var.db_username)}:${urlencode(var.db_password)}@${aws_db_instance.ferry_postgres.address}:${aws_db_instance.ferry_postgres.port}/${urlencode(var.db_name)}?ssl=require"
         },
         {
           name  = "DB_HOST"
@@ -336,17 +394,150 @@ resource "aws_ecs_task_definition" "ferry_central_worker" {
   }
 }
 
+# 4.3. Task Definition: Dashboard Cartográfico + Nginx Central (SCRUM-27)
+resource "aws_ecs_task_definition" "ferry_central_dashboard" {
+  family                   = "ferry-central-dashboard-${var.environment}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.ecs_dashboard_cpu
+  memory                   = var.ecs_dashboard_memory
+  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "dashboard"
+      image     = var.ecs_dashboard_image
+      essential = true
+      command   = ["node", "-e", "require('http').createServer((_,s)=>s.end('placeholder')).listen(3000)"]
+
+      portMappings = [
+        {
+          containerPort = 3000
+          hostPort      = 3000
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "HOSTNAME"
+          value = "0.0.0.0"
+        },
+        {
+          name  = "PORT"
+          value = "3000"
+        },
+        {
+          name  = "CENTRAL_API_URL"
+          value = "http://ingestion.ferry.internal:8000"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_dashboard_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "dashboard"
+        }
+      }
+    },
+    {
+      name      = "nginx-central"
+      image     = var.ecs_nginx_central_image
+      essential = true
+      command   = ["sh", "-c", "mkdir -p /usr/share/nginx/html && echo ok > /usr/share/nginx/html/healthz && exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
+
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "NGINX_RESOLVER"
+          value = "169.254.169.253"
+        },
+        {
+          name  = "DASHBOARD_UPSTREAM"
+          value = "http://127.0.0.1:3000"
+        },
+        {
+          name  = "CENTRAL_API_UPSTREAM"
+          value = "http://ingestion.ferry.internal:8000"
+        }
+      ]
+
+      dependsOn = [
+        {
+          containerName = "dashboard"
+          condition     = "START"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_dashboard_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "nginx"
+        }
+      }
+    }
+  ])
+
+  tags = {
+    Name        = "ferry-central-dashboard-${var.environment}"
+    Component   = "Compute"
+    Service     = "Dashboard"
+    Environment = var.environment
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 4.4. Service Discovery Privado (AWS Cloud Map: ingestion.ferry.internal)
+# ------------------------------------------------------------------------------
+
+resource "aws_service_discovery_private_dns_namespace" "ferry_internal" {
+  name        = "ferry.internal"
+  description = "Namespace DNS privado Cloud Map para comunicacao interna da Central"
+  vpc         = aws_vpc.ferry_vpc.id
+}
+
+resource "aws_service_discovery_service" "ferry_ingestion_sd" {
+  name = "ingestion"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.ferry_internal.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
 # ------------------------------------------------------------------------------
 # 5. ECS Services com Auto-Recuperação e Roteamento
 # ------------------------------------------------------------------------------
 
-# 5.1. ECS Service: Ingestion (Integrado ao ALB gRPC na Subnet Privada)
+# 5.1. ECS Service: Ingestion (Integrado ao ALB gRPC + REST e Cloud Map)
 resource "aws_ecs_service" "ferry_central_ingestion" {
-  name            = "ferry-central-ingestion-${var.environment}"
-  cluster         = aws_ecs_cluster.ferry_cluster.id
-  task_definition = aws_ecs_task_definition.ferry_central_ingestion.arn
-  launch_type     = "FARGATE"
-  desired_count   = var.ecs_ingestion_desired_count
+  name                              = "ferry-central-ingestion-${var.environment}"
+  cluster                           = aws_ecs_cluster.ferry_cluster.id
+  task_definition                   = aws_ecs_task_definition.ferry_central_ingestion.arn
+  launch_type                       = "FARGATE"
+  desired_count                     = var.ecs_ingestion_desired_count
+  health_check_grace_period_seconds = 30
 
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
@@ -366,7 +557,27 @@ resource "aws_ecs_service" "ferry_central_ingestion" {
     container_port   = 50051
   }
 
-  depends_on = [aws_lb_listener.grpc_listener]
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ferry_rest_tg.arn
+    container_name   = "ferry-central-ingestion"
+    container_port   = 8000
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.ferry_ingestion_sd.arn
+  }
+
+  depends_on = [
+    aws_lb_listener.grpc_listener,
+    aws_lb_listener.http_listener,
+    aws_lb_listener_rule.rest_health_rule,
+  ]
+
+  # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  # e desired_count é ajustado dinamicamente pelo Application Auto Scaling (SCRUM-30)
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
 
   tags = {
     Name        = "ferry-central-ingestion-${var.environment}"
@@ -396,10 +607,58 @@ resource "aws_ecs_service" "ferry_central_worker" {
     assign_public_ip = false
   }
 
+  # A revisão em produção é publicada pelo cd-central-deploy.yml (SCRUM-24)
+  # e desired_count é ajustado dinamicamente pelo Application Auto Scaling (SCRUM-30)
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+
   tags = {
     Name        = "ferry-central-worker-${var.environment}"
     Component   = "Compute"
     Service     = "Worker"
+    Environment = var.environment
+  }
+}
+
+# 5.3. ECS Service: Dashboard Cartográfico + Nginx Central (SCRUM-27)
+resource "aws_ecs_service" "ferry_central_dashboard" {
+  name                              = "ferry-central-dashboard-${var.environment}"
+  cluster                           = aws_ecs_cluster.ferry_cluster.id
+  task_definition                   = aws_ecs_task_definition.ferry_central_dashboard.arn
+  launch_type                       = "FARGATE"
+  desired_count                     = var.ecs_dashboard_desired_count
+  health_check_grace_period_seconds = 30
+
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
+  network_configuration {
+    subnets = [
+      aws_subnet.ferry_private_app_subnet_a.id,
+      aws_subnet.ferry_private_app_subnet_b.id
+    ]
+    security_groups  = [aws_security_group.sg_ferry_fargate.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ferry_dashboard_tg.arn
+    container_name   = "nginx-central"
+    container_port   = 80
+  }
+
+  depends_on = [aws_lb_listener.http_listener]
+
+  # A revisão em produção é publicada pelo cd-central-deploy.yml
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
+  tags = {
+    Name        = "ferry-central-dashboard-${var.environment}"
+    Component   = "Compute"
+    Service     = "Dashboard"
     Environment = var.environment
   }
 }

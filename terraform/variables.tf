@@ -220,10 +220,80 @@ variable "ecs_worker_image" {
   default     = "public.ecr.aws/docker/library/python:3.14-slim"
 }
 
+variable "ecs_dashboard_image" {
+  description = "URI da imagem Docker provisória/inicial para o Dashboard Cartográfico (substituída pelo CI/CD)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/node:24-alpine"
+}
+
+variable "ecs_nginx_central_image" {
+  description = "URI da imagem Docker provisória/inicial para o proxy Nginx da Central (substituída pelo CI/CD)"
+  type        = string
+  default     = "public.ecr.aws/docker/library/nginx:1.27-alpine"
+}
+
+variable "ecs_dashboard_cpu" {
+  description = "Unidades de CPU alocadas para a tarefa do Dashboard Central (512 = 0.5 vCPU)"
+  type        = string
+  default     = "512"
+}
+
+variable "ecs_dashboard_memory" {
+  description = "Memória em MiB alocada para a tarefa do Dashboard Central (1024 = 1 GB)"
+  type        = string
+  default     = "1024"
+}
+
+variable "ecs_dashboard_desired_count" {
+  description = "Número desejado de tarefas em execução para o Dashboard Central"
+  type        = number
+  default     = 1
+}
+
 variable "ecs_log_retention_days" {
   description = "Dias de retenção dos logs de contêiner no CloudWatch Logs"
   type        = number
   default     = 7
+}
+
+# ------------------------------------------------------------------------------
+# Variáveis de Auto Scaling ECS Fargate (SCRUM-30)
+# ------------------------------------------------------------------------------
+
+variable "ecs_ingestion_min_capacity" {
+  description = "Quantidade mínima de tarefas ECS do serviço de Ingestão"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_ingestion_max_capacity" {
+  description = "Quantidade máxima de tarefas ECS do serviço de Ingestão"
+  type        = number
+  default     = 4
+}
+
+variable "ecs_ingestion_cpu_target" {
+  description = "Percentual alvo médio de CPU para o Auto Scaling do serviço de Ingestão"
+  type        = number
+  default     = 70
+}
+
+variable "ecs_worker_min_capacity" {
+  description = "Quantidade mínima de tarefas ECS do serviço Worker SQS"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_worker_max_capacity" {
+  description = "Quantidade máxima de tarefas ECS do serviço Worker SQS"
+  type        = number
+  default     = 4
+}
+
+variable "ecs_worker_sqs_target_messages" {
+  description = "Quantidade alvo média de mensagens visíveis na fila SQS para escalar o Worker"
+  type        = number
+  default     = 100
 }
 
 # ------------------------------------------------------------------------------
@@ -256,3 +326,23 @@ variable "ec2_barco_volume_size" {
 
 
 
+
+# ------------------------------------------------------------------------------
+# CI/CD (SCRUM-24)
+# ------------------------------------------------------------------------------
+
+variable "github_repository" {
+  description = "Repositório GitHub (owner/nome) autorizado a assumir a role de deploy via OIDC"
+  type        = string
+  default     = "RafaelFS01/ferry-telemetry-tde"
+}
+
+# ------------------------------------------------------------------------------
+# Segurança mTLS & Domínio gRPC (SCRUM-34 / SCRUM-29)
+# ------------------------------------------------------------------------------
+
+variable "grpc_custom_domain" {
+  description = "Subdomínio customizado do endpoint gRPC incluído no SAN do certificado do ALB"
+  type        = string
+  default     = "telemetry.rioswesley.com.br"
+}

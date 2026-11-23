@@ -128,7 +128,13 @@ ferry-telemetry-tde/
 │   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 16)
 │
 ├── docker/                        ---> Configurações de proxies de borda Nginx
-├── terraform/                     ---> IaC para VPC, ECS Fargate, ALB gRPC, RDS e SQS
+├── docs/                          ---> Especificação arquitetural, CI/CD e roteiro de testes de caos
+│   └── chaos-testing.md           ---> Evidências e comandos de carga até a quebra + Chaos Node Kill
+├── scripts/
+│   └── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
+│   ├── alarms.tf                  ---> Alarmes CloudWatch (DLQ, erros 5XX no ALB e CPU ECS >= 80%)
+│   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
 └── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
 ```
 
@@ -316,7 +322,7 @@ Para garantir que o app **GitHub for Atlassian** vincule os artefatos de código
 6. **Code Review e Merge:** Após aprovação do revisor e aprovação no CI do GitHub Actions, o PR é mesclado na `main`.
 
 #### 3.2.4. Catálogo Canônico de Tarefas Jira e Branches Homologadas
-Todas as 23 tarefas cadastradas no Jira possuem suas respectivas branches padronizadas:
+Todas as tarefas cadastradas no Jira possuem suas respectivas branches padronizadas:
 
 | Chave Jira | Tarefa / Entregável | Sprint | Responsável | Branch Recomendada | Comando Git de Partida |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -343,6 +349,12 @@ Todas as 23 tarefas cadastradas no Jira possuem suas respectivas branches padron
 | **SCRUM-26** | Teste de Partição de Rede de 24h (17.280 pacotes)| S4 | Álex Lima | `feature/SCRUM-26-teste-particao-rede-24h` | `git checkout -b feature/SCRUM-26-teste-particao-rede-24h` |
 | **SCRUM-27** | Deploy e Validação End-to-End na Nuvem AWS | S4 | Rafael Figueiredo | `feature/SCRUM-27-deploy-aws-e2e` | `git checkout -b feature/SCRUM-27-deploy-aws-e2e` |
 | **SCRUM-28** | Documentação Final, Runbooks e Apresentação | S4 | Equipe | `docs/SCRUM-28-runbooks-apresentacao` | `git checkout -b docs/SCRUM-28-runbooks-apresentacao` |
+| **SCRUM-29** | DNS Amigável e Roteamento Público com AWS Route 53 | S4 | Wesley Rios | `feature/SCRUM-29-dns-route53-dominio` | `git checkout -b feature/SCRUM-29-dns-route53-dominio` |
+| **SCRUM-30** | Auto Scaling Horizontal no ECS Fargate via Terraform | S4 | Rafael Figueiredo | `feature/SCRUM-30-ecs-autoscaling-terraform` | `git checkout -b feature/SCRUM-30-ecs-autoscaling-terraform` |
+| **SCRUM-31** | Padrão Circuit Breaker no Cliente gRPC do Nó Barco | S4 | Álex Lima | `feature/SCRUM-31-circuit-breaker-barco` | `git checkout -b feature/SCRUM-31-circuit-breaker-barco` |
+| **SCRUM-32** | Logs Estruturados em JSON no Nó Central Python | S4 | Otavio Costa | `feature/SCRUM-32-logs-json-central` | `git checkout -b feature/SCRUM-32-logs-json-central` |
+| **SCRUM-33** | Alarmes Operacionais Básicos no CloudWatch via Terraform | S4 | Rafael Figueiredo | `feature/SCRUM-33-cloudwatch-alarms-terraform` | `git checkout -b feature/SCRUM-33-cloudwatch-alarms-terraform` |
+| **SCRUM-34** | mTLS Estrito no Listener gRPC do ALB via Trust Store S3 | S4 | Rafael Figueiredo | `feature/SCRUM-34-mtls-estrito-alb-terraform` | `git checkout -b feature/SCRUM-34-mtls-estrito-alb-terraform` |
 
 ---
 
@@ -431,7 +443,7 @@ A arquitetura de System Design do projeto organiza-se em dois macroambientes: o 
   - **Balanceamento L7 gRPC:** Ingress / ALB distribuindo streams HTTP/2 por algoritmo round-robin ou least-outstanding-requests diretamente aos nós de ingestão saudáveis.
   - **Provisionamento e Orquestração Serverless (Terraform + ECS Fargate + GitHub Actions):**
     - **Terraform:** Gerencia 100% da infraestrutura declarativa (criação do Cluster ECS, Task Definitions, ECS Services, Application Load Balancers, tópicos SNS, filas SQS e banco RDS).
-    - **AWS Fargate + CloudWatch:** Orquestra o auto-scaling dinâmico dos contêineres: a ingestão gRPC escala por CPU/conexões e os workers de banco escalam instantaneamente pelo volume de mensagens na fila SQS (`ApproximateNumberOfMessagesVisible`), esvaziando rajadas de 24h sem servidores ociosos.
+    - **AWS Fargate + Application Auto Scaling:** Orquestra o escalonamento horizontal automático (`1` a `4` tarefas, via `terraform/autoscaling.tf`): a ingestão gRPC escala por utilização média de CPU (`ECSServiceAverageCPUUtilization`, alvo de `70%`) e os workers de banco escalam pela profundidade da fila SQS (`ApproximateNumberOfMessagesVisible`, alvo médio de `100` mensagens), absorvendo rajadas sem servidores ociosos.
     - **GitHub Actions + Amazon ECR:** Executa a esteira automatizada de build, push de imagens versionadas e rolling update transparente das tarefas no ECS Fargate.
   - **Consistência em Múltiplos Nós:** Como múltiplas instâncias da central podem receber pacotes retransmitidos simultaneamente pelo buffer do barco, a idempotência transacional (`ON CONFLICT (message_id) DO NOTHING` no PostgreSQL) garante a integridade dos dados independente de qual nó processe a requisição.
 

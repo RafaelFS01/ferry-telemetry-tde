@@ -1,0 +1,12 @@
+# Contexto da raiz usado pelas imagens de produção do barco e do Nginx
+.git
+**/node_modules
+**/.next
+**/dist
+**/data
+**/__pycache__
+**/.venv
+terraform
+docs
+.env
+.env.*

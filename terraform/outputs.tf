@@ -188,8 +188,13 @@ output "alb_grpc_target_group_arn" {
 }
 
 output "alb_rest_target_group_arn" {
-  description = "ARN do Target Group REST / Dashboard (Porta 8000)"
+  description = "ARN do Target Group REST / Health API (Porta 8000)"
   value       = aws_lb_target_group.ferry_rest_tg.arn
+}
+
+output "alb_dashboard_target_group_arn" {
+  description = "ARN do Target Group Dashboard Cartográfico + Nginx Central (Porta 80)"
+  value       = aws_lb_target_group.ferry_dashboard_tg.arn
 }
 
 # ------------------------------------------------------------------------------
@@ -237,6 +242,47 @@ output "cloudwatch_log_group_worker" {
 }
 
 # ------------------------------------------------------------------------------
+# Application Auto Scaling ECS Fargate (SCRUM-30)
+# ------------------------------------------------------------------------------
+
+output "ecs_ingestion_autoscaling_policy_arn" {
+  description = "ARN da política de Auto Scaling por CPU do serviço de Ingestão"
+  value       = aws_appautoscaling_policy.ecs_ingestion_cpu_policy.arn
+}
+
+output "ecs_worker_autoscaling_policy_arn" {
+  description = "ARN da política de Auto Scaling por profundidade SQS do serviço Worker"
+  value       = aws_appautoscaling_policy.ecs_worker_sqs_policy.arn
+}
+
+# ------------------------------------------------------------------------------
+# Alarmes Operacionais no CloudWatch (SCRUM-33)
+# ------------------------------------------------------------------------------
+
+output "cloudwatch_alarm_names" {
+  description = "Nomes dos alarmes operacionais no CloudWatch (DLQ, ALB 5XX e CPU ECS)"
+  value = [
+    aws_cloudwatch_metric_alarm.ferry_dlq_messages_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.ferry_alb_target_5xx_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.ferry_ingestion_cpu_high_alarm.alarm_name,
+  ]
+}
+
+# ------------------------------------------------------------------------------
+# Trust Store mTLS do ALB (SCRUM-34)
+# ------------------------------------------------------------------------------
+
+output "alb_mtls_trust_store_arn" {
+  description = "ARN do Trust Store mTLS vinculado ao listener gRPC do ALB"
+  value       = aws_lb_trust_store.ferry_ca.arn
+}
+
+output "alb_mtls_trust_store_bucket" {
+  description = "Nome do bucket S3 privado contendo o bundle CA do mTLS"
+  value       = aws_s3_bucket.ferry_mtls_trust_store.bucket
+}
+
+# ------------------------------------------------------------------------------
 # Instância EC2 Simuladora do Nó Barco (SCRUM-19)
 # ------------------------------------------------------------------------------
 
@@ -264,3 +310,54 @@ output "ec2_barco_private_ip" {
 
 
 
+
+# ------------------------------------------------------------------------------
+# CI/CD (SCRUM-24)
+# ------------------------------------------------------------------------------
+
+output "github_deploy_role_arn" {
+  description = "ARN da role assumida pelo GitHub Actions via OIDC (variavel AWS_DEPLOY_ROLE_ARN do repositório)"
+  value       = aws_iam_role.github_deploy.arn
+}
+
+output "ecr_repository_urls" {
+  description = "URLs dos repositórios ECR por componente"
+  value       = { for name, repository in aws_ecr_repository.ferry : name => repository.repository_url }
+}
+
+output "ecs_dashboard_service_name" {
+  description = "Nome do ECS Service do Dashboard Cartográfico + Nginx Central"
+  value       = aws_ecs_service.ferry_central_dashboard.name
+}
+
+output "ecs_dashboard_task_definition_arn" {
+  description = "ARN da Task Definition do Dashboard Cartográfico + Nginx Central"
+  value       = aws_ecs_task_definition.ferry_central_dashboard.arn
+}
+
+output "cloudwatch_log_group_dashboard" {
+  description = "Nome do CloudWatch Log Group para o serviço Dashboard Central"
+  value       = aws_cloudwatch_log_group.ecs_dashboard_logs.name
+}
+
+# ------------------------------------------------------------------------------
+# Certificados TLS / mTLS para Nó Barco (SCRUM-27)
+# ------------------------------------------------------------------------------
+
+output "tls_ca_cert_pem" {
+  description = "Certificado raiz CA (PEM) para validação TLS do ALB pelo Nó Barco"
+  value       = tls_self_signed_cert.ferry_ca.cert_pem
+  sensitive   = true
+}
+
+output "tls_boat_cert_pem" {
+  description = "Certificado cliente X.509 (PEM) do Nó Barco"
+  value       = tls_locally_signed_cert.ferry_boat.cert_pem
+  sensitive   = true
+}
+
+output "tls_boat_key_pem" {
+  description = "Chave privada RSA (PEM) do Nó Barco"
+  value       = tls_private_key.ferry_boat.private_key_pem
+  sensitive   = true
+}
