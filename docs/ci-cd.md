@@ -27,7 +27,8 @@ A EC2 do barco baixa as imagens com o próprio perfil de instância.
 
 1. `terraform apply` cria ECR, provedor OIDC, papel de deploy e perfil da EC2.
 2. Cadastre as variáveis acima no repositório.
-3. Na EC2, crie `/opt/ferry-boat/.env` (`BOAT_ID`, `CENTRAL_GRPC_URL`, caminhos mTLS) e coloque os certificados em `/opt/ferry-boat/certs`.
+3. Na EC2, crie `/opt/ferry-boat/.env` (`BOAT_ID`, caminhos mTLS) e coloque os certificados em `/opt/ferry-boat/certs`.
+   O barco envia para `telemetry.rioswesley.com.br:50051` (SCRUM-29); defina `CENTRAL_GRPC_URL` no `.env` só para usar outro endereço.
 4. Rode os workflows de CD manualmente (Actions → *Run workflow*) ou faça merge em `main`.
 
 Depois do primeiro deploy, quem publica as revisões das task definitions é o pipeline.

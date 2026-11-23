@@ -1,7 +1,7 @@
 # Runtime do Nó Barco na EC2 simuladora (SCRUM-24).
 # Copiado para /opt/ferry-boat pelo workflow cd-edge-deploy.yml, que define
-# ECR_REGISTRY e IMAGE_TAG. Configurações específicas da embarcação (BOAT_ID,
-# CENTRAL_GRPC_URL e caminhos mTLS) ficam em /opt/ferry-boat/.env, mantido pelo operador.
+# ECR_REGISTRY e IMAGE_TAG. Configurações específicas da embarcação (BOAT_ID e
+# caminhos mTLS) ficam em /opt/ferry-boat/.env, mantido pelo operador.
 name: ferry-edge
 
 services:
@@ -16,6 +16,8 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 3002
       BUFFER_BACKUP_PATH: /app/data/telemetry-buffer.sqlite
+      # Domínio da SCRUM-29; um CENTRAL_GRPC_URL no .env do operador tem prioridade
+      CENTRAL_GRPC_URL: ${CENTRAL_GRPC_URL:-telemetry.rioswesley.com.br:50051}
     volumes:
       - boat-data:/app/data
       # Certificados mTLS do barco (obrigatórios com NODE_ENV=production)

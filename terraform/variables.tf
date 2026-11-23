@@ -346,3 +346,45 @@ variable "grpc_custom_domain" {
   type        = string
   default     = "telemetry.rioswesley.com.br"
 }
+
+# ------------------------------------------------------------------------------
+# DNS Público Route 53 (SCRUM-29)
+# ------------------------------------------------------------------------------
+
+variable "domain_name" {
+  description = "Domínio registrado no Registro.br cuja zona pública passa a ser servida pelo Route 53"
+  type        = string
+  default     = "rioswesley.com.br"
+}
+
+variable "dashboard_subdomain" {
+  description = "Rótulo do Dashboard Cartográfico e da API REST (HTTPS no ALB)"
+  type        = string
+  default     = "painel"
+}
+
+variable "captain_subdomain" {
+  description = "Rótulo do Painel do Capitão servido pela EC2 do Nó Barco"
+  type        = string
+  default     = "capitao"
+}
+
+variable "dns_preserved_records" {
+  description = <<-EOT
+    Registros que já existiam no DNS do Registro.br e precisam continuar resolvendo
+    depois da troca de nameservers (site no Firebase e e-mail no Zoho).
+    name vazio representa o apex do domínio.
+  EOT
+  type = list(object({
+    name    = string
+    type    = string
+    ttl     = number
+    records = list(string)
+  }))
+  default = [
+    { name = "", type = "A", ttl = 3600, records = ["199.36.158.100"] },
+    { name = "", type = "TXT", ttl = 3600, records = ["hosting-site=wriosdev", "v=spf1 include:zohomail.com ~all"] },
+    { name = "", type = "MX", ttl = 3600, records = ["10 mx.zoho.com", "20 mx2.zoho.com", "50 mx3.zoho.com"] },
+    { name = "zmail._domainkey", type = "TXT", ttl = 3600, records = ["v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCcKTI0idT2Rk6cYTHyOHV06RKyxRs8pYNGqoiBBKWBBwUN2h5CIG/eq0H9zjP3AVNL8tjRdEV0z3sKcrsO9YRuJVTmDX7z34AqqyKjjQxeEul1Qd+X+cNiq8tFYznV548LALqLR4yuc6GlHCEy6S+uX9glAqek382fgUc+fZK6qQIDAQAB"] },
+  ]
+}
