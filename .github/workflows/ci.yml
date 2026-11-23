@@ -32,7 +32,11 @@ jobs:
             npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf breaking --against "$baseline"
           fi
       - name: Configuracao Compose
-        run: docker compose -f docker-compose.local.yml config --quiet
+        run: |
+          docker compose -f docker-compose.local.yml config --quiet
+          docker compose -f docker-compose.local.yml -f docker-compose.partition.yml config --quiet
+      - name: Regras do ensaio de particao (SCRUM-26)
+        run: node --test "scripts/resilience/*.test.mjs"
       - name: Build do barco Alpine
         run: docker compose -f docker-compose.local.yml build ferry-boat
       - name: Testes e tipos no container
