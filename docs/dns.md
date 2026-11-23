@@ -21,7 +21,8 @@ Route 53 (`terraform/dns.tf`).
 ## Registros preservados
 
 Antes da SCRUM-29 o domínio já resolvia pelo DNS do Registro.br: o apex aponta para o
-Firebase Hosting e o e-mail usa o Zoho (MX, SPF e DKIM). Esses registros estão em
+Firebase Hosting, o e-mail usa o Zoho (MX, SPF, DKIM e verificação) e há outros projetos
+em subdomínios (`backendava`, `doomweb`, `feirafighter`, `lumina`). Esses registros estão em
 `dns_preserved_records` (`terraform/variables.tf`) e são recriados na zona do Route 53,
 então nada para de funcionar na troca de nameservers.
 

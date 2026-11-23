@@ -383,8 +383,12 @@ variable "dns_preserved_records" {
   }))
   default = [
     { name = "", type = "A", ttl = 3600, records = ["199.36.158.100"] },
-    { name = "", type = "TXT", ttl = 3600, records = ["hosting-site=wriosdev", "v=spf1 include:zohomail.com ~all"] },
+    { name = "", type = "TXT", ttl = 3600, records = ["hosting-site=wriosdev", "v=spf1 include:zohomail.com ~all", "zoho-verification=zb34088237.zmverify.zoho.com"] },
     { name = "", type = "MX", ttl = 3600, records = ["10 mx.zoho.com", "20 mx2.zoho.com", "50 mx3.zoho.com"] },
     { name = "zmail._domainkey", type = "TXT", ttl = 3600, records = ["v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCcKTI0idT2Rk6cYTHyOHV06RKyxRs8pYNGqoiBBKWBBwUN2h5CIG/eq0H9zjP3AVNL8tjRdEV0z3sKcrsO9YRuJVTmDX7z34AqqyKjjQxeEul1Qd+X+cNiq8tFYznV548LALqLR4yuc6GlHCEy6S+uX9glAqek382fgUc+fZK6qQIDAQAB"] },
+    { name = "backendava", type = "A", ttl = 3600, records = ["44.215.222.13"] },
+    { name = "doomweb", type = "CNAME", ttl = 3600, records = ["doomweb.pages.dev"] },
+    { name = "feirafighter", type = "CNAME", ttl = 3600, records = ["feira-fighter.pages.dev"] },
+    { name = "lumina", type = "CNAME", ttl = 3600, records = ["luminaclothstore1.web.app"] },
   ]
 }
