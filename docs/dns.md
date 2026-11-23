@@ -44,11 +44,16 @@ ao Route 53. Por isso a zona é criada primeiro:
 
 2. No Registro.br, em **DNS → Alterar servidores DNS**, troque `e.sec.dns.br` e
    `f.sec.dns.br` pelos quatro nameservers do output.
-3. Confira a delegação (pode levar de minutos a algumas horas):
+3. Confira a delegação. O Registro.br deixa o domínio "em transição" por cerca de 2 h
+   antes de publicar os nameservers novos. Pergunte direto ao servidor do `.br`, que
+   não tem cache; só siga quando ele responder os quatro `awsdns`:
 
    ```bash
-   nslookup -type=NS rioswesley.com.br 1.1.1.1
+   nslookup -type=NS rioswesley.com.br a.dns.br
    ```
+
+   Resolvedores públicos (`1.1.1.1`, `8.8.8.8`) podem continuar mostrando os antigos por
+   mais algumas horas, enquanto o cache deles não expira.
 
 4. Rode o apply completo. Ele cria os registros do projeto, o certificado público e o
    listener HTTPS, e espera a ACM validar o certificado (até 2 h):
