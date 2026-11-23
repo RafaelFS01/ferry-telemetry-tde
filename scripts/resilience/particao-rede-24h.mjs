@@ -209,6 +209,8 @@ function markdownReport(result) {
     `- Partição: ${evidence.partition.cutAt} -> restauração ${evidence.partition.restoredAt}`,
     `- Acúmulo: ${evidence.accumulation.seconds}s até ${evidence.manifest.size} pacotes ` +
       `(seq ${evidence.manifest.firstSequence}..${evidence.manifest.lastSequence})`,
+    `- Circuit breaker do barco na partição: ${evidence.accumulation.circuitStatesSeen.join(', ') || 'n/d'}; ` +
+      `CLOSED com ACK ${evidence.drain.circuitClosedAfterSeconds ?? 'n/d'}s após a restauração`,
     `- Drenagem: ${evidence.drain.seconds}s (${evidence.drain.packetsPerSecond} pacotes/s)`,
     `- Fila SQS: pico ${evidence.sqs.peakDepth} mensagens; esvaziada em ${evidence.sqs.seconds}s após a drenagem`,
   ];
@@ -263,6 +265,7 @@ async function main() {
 
     // 3. Acúmulo contínuo: janela de RAM limitada, excedente em disco.
     const statesSeen = new Set();
+    const circuitDuringPartition = new Set();
     const accumulationSamples = [];
     let maxMemoryCount = 0;
     let memoryLimit = 0;
@@ -275,10 +278,12 @@ async function main() {
       if (Date.now() > accumulationDeadline) throw new Error('Tempo esgotado no acúmulo do buffer.');
       lastStatus = await boatStatus();
       statesSeen.add(lastStatus.state);
+      if (lastStatus.circuit_state) circuitDuringPartition.add(lastStatus.circuit_state);
       memoryLimit = lastStatus.memory_limit;
       maxMemoryCount = Math.max(maxMemoryCount, lastStatus.memory_count);
       const sample = { t: Date.now() - cutAt, pending: lastStatus.pending_count,
-        memory: lastStatus.memory_count, disk: lastStatus.disk_count, state: lastStatus.state };
+        memory: lastStatus.memory_count, disk: lastStatus.disk_count, state: lastStatus.state,
+        circuit: lastStatus.circuit_state ?? null };
       if (Date.now() - lastRssAt > 5000) {
         lastRssAt = Date.now();
         const memory = await procMemory('ferry-boat');
@@ -304,6 +309,7 @@ async function main() {
     evidence.accumulation = {
       seconds: Math.round((Date.now() - cutAt) / 1000),
       statesSeen: [...statesSeen],
+      circuitStatesSeen: [...circuitDuringPartition],
       memoryLimit,
       maxMemoryCount,
       finalPending: lastStatus.pending_count,
@@ -380,11 +386,15 @@ async function main() {
     const drainDeadline = restoredAt + options.drainTimeoutMin * 60_000;
     let drainedAt = null;
     let drainError = null;
+    let circuitClosedAt = null;
     while (Date.now() < drainDeadline) {
       const status = await boatStatus().catch(() => null);
       if (status) {
         drainSamples.push({ t: Date.now() - restoredAt, pending: status.pending_count,
-          oldest: status.oldest_timestamp, state: status.state });
+          oldest: status.oldest_timestamp, state: status.state, circuit: status.circuit_state ?? null });
+        // SCRUM-31: tempo até o circuit breaker voltar a CLOSED após a restauração.
+        if (circuitClosedAt === null && status.circuit_state === 'CLOSED' && status.last_ack_at !== null &&
+          Number(status.last_ack_at) >= restoredAt) circuitClosedAt = Date.now();
         if (drainSamples.length % 30 === 1) log(`Drenagem: ${status.pending_count} pendentes (${status.state})`);
         if (status.state === 'blocked' || status.state === 'storage_error') {
           drainError = `${status.state}: ${JSON.stringify(status.last_error)}`;
@@ -402,6 +412,7 @@ async function main() {
       manifestSize: manifest.length, restoredAt, drainedAt: drainedAt ?? Date.now(),
     });
     evidence.drain = { completed: drainedAt !== null, error: drainError, ...drainSummary,
+      circuitClosedAfterSeconds: circuitClosedAt === null ? null : Math.round((circuitClosedAt - restoredAt) / 100) / 10,
       samples: downsample(drainSamples) };
     log(drainedAt ? `Buffer drenado em ${drainSummary.seconds}s (${drainSummary.packetsPerSecond} pacotes/s).`
       : `Drenagem incompleta: ${drainError ?? 'tempo esgotado'}.`);
