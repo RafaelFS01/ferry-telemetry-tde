@@ -410,45 +410,76 @@ O cronograma de implementação técnica está estruturado em fases sequenciais 
 
 ## 5. System Design do Projeto
 
-A arquitetura de System Design do projeto organiza-se em dois macroambientes: o **Nó Cliente Embarcado (Instância A - Barco)** e o **Nó Servidor Central (Instância B - Central de Terra)**, conectados pelo canal de telemetria gRPC sobre HTTP/2.
+A arquitetura de System Design do projeto organiza-se em quatro zonas interconectadas de ponta a ponta: o **Nó de Borda (Nó Embarcado - Ferry Boat / EC2 Borda)**, o **Enlace de Transmissão (WAN Intermitente)**, a **Borda da Nuvem (AWS Edge & Networking em Subnet Pública)** e o **Núcleo Central (AWS VPC em Subnet Privada)**, operando sob o canal de telemetria gRPC sobre HTTP/2 com mTLS estrito.
 
 ![System Design](docs/system-design.png)
 
-### 5.1. Nó Cliente Embarcado (Instância A - Barco)
+### 5.1. Nó de Borda (Nó Embarcado — Ferry Boat / EC2 Borda)
 
-- **Núcleo IoT Embarcado (NestJS):**
-  - **Simulador Náutico GPS:** Gera periodicamente (ciclos de 5s) a trajetória Salvador ↔ Itaparica.
-  - **Camada de Tolerância a Falhas (CAP / AP):** Buffer FIFO com janela RAM de até 5.000 amostras e persistência SQLite em disco (`telemetry-buffer.sqlite`), preservando a fila em reinícios sem descartar o excedente do cache.
-  - **REST API Control & Status (Porta 3002):** Interface interna para fornecimento de métricas locais e estado do nó para a camada visual.
-  - **Cliente gRPC Resiliente:** Responsável pela invocação RPC, controle de deadline (2.500 ms), keepalive e propagação de Correlation ID.
-- **Apresentação & Borda:**
-  - **Borda Reversa Nginx (Porta 80 / 8080):** Rate limiting e hardening de rede.
-  - **Painel Tátil do Capitão (Next.js 16 Standalone na Porta 3000):** Controle de lotação, visualização da taxa de envio e estado da fila.
+O nó de borda simula fielmente a computação embarcada da balsa navegando na Baía de Todos-os-Santos (Salvador ↔ Itaparica), operando em container Docker com **Node.js 24 / NestJS 10**:
 
-### 5.2. Canal de Comunicação Distribuída
+- **GpsSimulatorService:** Gera a cada 5 segundos a cinemática e telemetria da embarcação: latitude/longitude, rumo, velocidade em nós, RPM e temperatura do motor, pressão de óleo, nível de combustível e diagnósticos de enlace celular.
+- **Camada de Resiliência Local (Tolerância a Partição / Teorema CAP - AP):**
+  - **FifoBufferService:** Buffer em memória de alta velocidade com capacidade de retenção de até 5.000 amostras.
+  - **SqliteBufferStore:** Persistência transacional em disco local (`buffer.sqlite`) executada em *Worker Thread* dedicada para isolamento de I/O assíncrono. Garante suporte a blackouts severos de até 24 horas contínuas (17.280 pacotes retidos sem estouro de memória RAM).
+  - **Circuit Breaker (Padrão Disjuntor):** Máquina de estados com três modos (`CLOSED`, `OPEN`, `HALF_OPEN`) com período de cooldown. Em caso de falha de conexão com a Central, interrompe rajadas contra o enlace celular e desvia novas leituras diretamente para o SQLite até a reabilitação da rota.
+- **Cliente gRPC Resiliente:** Compilado a partir do contrato IDL `proto/telemetry.proto` (`TelemetryService/IngestTelemetry`), opera com timeouts de deadline de 2.500 ms, keepalive ativo, canais multiplexados HTTP/2 e **autenticação mútua estrita (mTLS)** utilizando certificado de cliente (`boat.crt`), chave privada (`boat.key`) e autoridade certificadora raiz (`ca.crt`).
+- **Servidor Web Local e Apresentação de Bordo:**
+  - **Servidor Web Local (NestJS na Porta 3002):** Expõe endpoints locais (`/api/edge/health`, `/api/edge/telemetry/buffer/status` e `/api/edge/telemetry/latest`) para monitoramento de saúde e status do disjuntor.
+  - **Nginx de Borda (Porta 80):** Atua como proxy reverso local com *rate limiting* ativo (20 req/s), roteando requisições raiz (`/`) para o painel tátil e prefixadas (`/api/edge/*`) para a API interna do NestJS.
+  - **Painel Tátil do Capitão (Next.js 16 na Porta 3000):** Interface tátil com Tailwind CSS v4 para controle náutico, monitoramento de conectividade 4G/5G, status do disjuntor e pacotes retidos em tempo real.
 
-- **RPC Unária `TelemetryService/EnviarTelemetria`:** Executada sobre HTTP/2 com criptografia e autenticação mútua via **mTLS (Mutual TLS)** e Protocol Buffers v3 (`ferry.telemetry.v1`), transportando o `TelemetryPacket` (`message_id` UUIDv4, `boat_id`, `timestamp_coleta`, `passageiros`, `NavigationData`, `PropulsionData` e `NetworkDiagnostics`) e retornando o `TelemetryAck` com confirmação de entrega e carimbo de data/hora do servidor (`processado_em`).
+---
 
-### 5.3. Nó Servidor Central (Instância B - Central de Terra)
+### 5.2. Enlace de Transmissão (WAN — Canal Intermitente)
 
-- **Servidor de Ingestão (Python 3.14):**
-  - **Servidor gRPC Assíncrono (grpc.aio na Porta 50051):** Recepção de alto desempenho, validação de schema e verificação de integridade.
-  - **Mecanismo de Idempotência:** Controle estrito de duplicidade baseado na chave primária UUIDv4 com política `ON CONFLICT DO NOTHING`.
-- **Roteamento e Persistência:**
-  - **Modo Direto / Local:** Conexão direta via pool TCP assíncrono (porta 5432) com SQLAlchemy 2.0 / asyncpg para persistência no PostgreSQL 18.
-  - **Modo Nuvem Desacoplado (Mensageria Serverless AWS):** Publicação em tópico SNS (`ferry-telemetria-topic`) com fan-out para filas SQS (`ferry-db-writer-queue` para persistência em lote e `ferry-alerts-queue` para detecção de anomalias/lotação), contando com Dead Letter Queue (DLQ) com retenção de 14 dias e consumidor assíncrono.
-  - **Base de Dados Relacional:** PostgreSQL 18 contendo a tabela `telemetrias` com chave primária `message_id` e campo gerado computado `latencia_transito_ms` (`STORED`).
-- **Monitoramento Cartográfico:**
-  - **Borda Reversa Nginx (Porta 80 / 8081):** Headers de segurança e proxy HTTP.
-  - **Dashboard Cartográfico Náutico (Next.js 16 Standalone na Porta 3001):** Visualização espacial da rota em tempo real via Leaflet, OpenStreetMap e gráficos Recharts alimentados por API REST interna da Central.
-- **Arquitetura de Escalonamento Horizontal (Nó Central):**
-  - **Pool de Ingestão Elástico Serverless:** Tarefas elásticas no Amazon ECS com AWS Fargate executando o serviço `ferry-central` em Python 3.14 (`grpc.aio`), escalando sob demanda sem necessidade de instâncias EC2 subjacentes.
-  - **Balanceamento L7 gRPC:** Ingress / ALB distribuindo streams HTTP/2 por algoritmo round-robin ou least-outstanding-requests diretamente aos nós de ingestão saudáveis.
-  - **Provisionamento e Orquestração Serverless (Terraform + ECS Fargate + GitHub Actions):**
-    - **Terraform:** Gerencia 100% da infraestrutura declarativa (criação do Cluster ECS, Task Definitions, ECS Services, Application Load Balancers, tópicos SNS, filas SQS e banco RDS).
-    - **AWS Fargate + Application Auto Scaling:** Orquestra o escalonamento horizontal automático (`1` a `4` tarefas, via `terraform/autoscaling.tf`): a ingestão gRPC escala por utilização média de CPU (`ECSServiceAverageCPUUtilization`, alvo de `70%`) e os workers de banco escalam pela profundidade da fila SQS (`ApproximateNumberOfMessagesVisible`, alvo médio de `100` mensagens), absorvendo rajadas sem servidores ociosos.
-    - **GitHub Actions + Amazon ECR:** Executa a esteira automatizada de build, push de imagens versionadas e rolling update transparente das tarefas no ECS Fargate.
-  - **Consistência em Múltiplos Nós:** Como múltiplas instâncias da central podem receber pacotes retransmitidos simultaneamente pelo buffer do barco, a idempotência transacional (`ON CONFLICT (message_id) DO NOTHING` no PostgreSQL) garante a integridade dos dados independente de qual nó processe a requisição.
+- **Meio de Transmissão:** Enlace celular 4G/5G costeiro ao longo da Baía de Todos-os-Santos, caracterizado por descontinuidades temporárias de sinal, desvanecimento por relevo e variações térmicas/marítimas.
+- **Fundamentação no Teorema CAP:**
+  - **Na Borda (AP - Availability & Partition Tolerance):** A embarcação prioriza a continuidade operacional local. Leituras nunca são descartadas; são retidas ordenadamente no buffer em disco mesmo durante desligamentos prolongados.
+  - **Na Central (Consistência Eventual):** Quando o canal gRPC é reestabelecido, os pacotes represados são drenados sequencialmente e persistidos sem duplicidades na base de dados central em terra.
+
+---
+
+### 5.3. Borda da Nuvem (AWS Edge & Networking — Subnet Pública)
+
+- **AWS Route 53 (DNS Público):**
+  - Resolução de nomes amigáveis em conformidade com o barema: `telemetry.rioswesley.com.br` (Ingestão gRPC), `painel.rioswesley.com.br` (Dashboard Central) e `capitao.rioswesley.com.br` (Nó Barco).
+- **Application Load Balancer L7 (Multi-AZ na Subnet Pública):**
+  - **Listener gRPC (`:50051`):** Terminação TLS 1.3 / HTTP/2 com **mTLS estrito** (`mode = "verify"`) validado por *Trust Store* no Amazon S3 via CA raiz do projeto. Conexões sem o certificado emitido pela CA são rejeitadas sumariamente no handshake criptográfico.
+  - **Listener Web (`:80`):** Roteamento inteligente por path:
+    - `/api/*` e `/health` direcionados para o Target Group da Ingestão REST FastAPI (`:8000`).
+    - `/*` direcionado para o Target Group do Dashboard Cartográfico Next.js (`:80`).
+- **NAT Gateway Multi-AZ:** Localizado na Subnet Pública, provê saída segura à internet para os nós computacionais Fargate sem expor endereços IP públicos nas tarefas privadas.
+
+---
+
+### 5.4. Núcleo Central (Subnet Privada — AWS VPC & ECS Fargate)
+
+Toda a computação, mensageria e dados operam **estritamente em Subnets Privadas Multi-AZ** (`assign_public_ip = false`), eliminando portas SSH e qualquer acesso direto externo:
+
+- **Serviço de Ingestão (`ferry-central-ingestion-prod` no AWS ECS Fargate):**
+  - Desenvolvido em **Python 3.14** assíncrono (`grpc.aio` na porta `:50051` e `FastAPI` na porta `:8000`).
+  - Totalmente *stateless*: valida o esquema binário Protobuf v3 e o `message_id` UUIDv4.
+  - Publica o evento de telemetria no **Amazon SNS** via **AWS SDK / HTTPS (`boto3`)** em ~2 ms, retornando o ACK gRPC imediato para o barco.
+  - **Auto Scaling Horizontal:** Política de *Target Tracking* baseada em utilização de CPU (`ECSServiceAverageCPUUtilization > 70%`), escalando réplicas dinamicamente sob picos de tráfego gRPC.
+  - Emite logs estruturados em **JSON padrão ISO 8601 UTC `Z`** diretamente para o CloudWatch.
+- **Pipeline Assíncrono de Mensageria (Amazon SNS + SQS):**
+  - **Amazon SNS (`ferry-telemetria-topic`):** Tópico de alta vazão operando em padrão Fanout.
+  - **Amazon SQS (`ferry-db-writer-queue`):** Fila principal desacoplada com retenção de 4 dias e *visibility timeout* de 30s, absorvendo rajadas de drenagem pós-partição (*Thundering Herd*).
+  - **Dead Letter Queue (`ferry-telemetry-dlq`):** Isola mensagens malformatadas após 3 tentativas malsucedidas de processamento.
+- **Serviço Worker Consumidor (`ferry-central-worker-prod` no AWS ECS Fargate):**
+  - Processo Python assíncrono em segundo plano consumindo a fila SQS em lotes de até 10 mensagens (`Batch = 10`).
+  - Executa filtro de **idempotência estrita** via cláusula transacional `ON CONFLICT (message_id) DO NOTHING` com SQLAlchemy 2.0 e driver `asyncpg`.
+  - Persiste lotes bulk no banco de dados e emite logs estruturados JSON com total de pacotes inseridos e duplicados.
+- **Banco de Dados Relacional (Amazon RDS PostgreSQL 18):**
+  - Instância gerenciada `db.t4g.micro` operando em **Single-AZ com Point-in-Time Recovery (PITR)** e backups diários automatizados no Amazon S3.
+  - Tabela canônica `telemetria` particionada/indexada por `timestamp`, `boat_id` e `sequence_number`.
+- **Serviço Dashboard Central (`ferry-central-dashboard-prod` no AWS ECS Fargate):**
+  - Container com Nginx reverso e aplicação **Next.js 16** com mapa interativo náutico (**Leaflet.js**).
+  - Consome dados em tempo real da Ingestão REST API (`/api/telemetry/latest` e `/api/telemetry/history`) para plotar a posição geográfica, velocidade e histórico de trilha das embarcações.
+- **Observabilidade Centralizada (AWS CloudWatch):**
+  - Grupos de logs dedicados (`/ecs/ferry-central-ingestion-prod`, `/ecs/ferry-central-worker-prod`, `/ecs/ferry-central-dashboard-prod`).
+  - Alarmes operacionais com gatilhos automáticos: `ferry-alb-target-5xx-alarm-prod` (erros 5xx), `ferry-dlq-messages-alarm-prod` (mensagens na DLQ) e `ferry-ingestion-cpu-high-alarm-prod` (CPU alta).
 
 ---
 
