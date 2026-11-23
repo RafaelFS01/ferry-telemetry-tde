@@ -346,3 +346,66 @@ resource "aws_lb_listener_rule" "rest_health_rule" {
     }
   }
 }
+
+# ------------------------------------------------------------------------------
+# 6. HTTPS público do Dashboard (SCRUM-29)
+# ------------------------------------------------------------------------------
+
+# Listener HTTPS (:443) com o certificado público *.domínio emitido pela ACM
+resource "aws_lb_listener" "https_listener" {
+  load_balancer_arn = aws_lb.ferry_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.public.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ferry_dashboard_tg.arn
+  }
+
+  tags = {
+    Name      = "listener-ferry-https-${var.environment}"
+    Protocol  = "HTTPS"
+    Port      = "443"
+    Component = "LoadBalancer"
+  }
+}
+
+resource "aws_lb_listener_rule" "https_rest_health_rule" {
+  listener_arn = aws_lb_listener.https_listener.arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ferry_rest_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/health", "/api/v1/health"]
+    }
+  }
+}
+
+# http://painel.<domínio> sobe para HTTPS; o DNS bruto do ALB segue em HTTP
+resource "aws_lb_listener_rule" "dashboard_https_redirect" {
+  listener_arn = aws_lb_listener.http_listener.arn
+  priority     = 1
+
+  action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+
+  condition {
+    host_header {
+      values = [local.dashboard_fqdn]
+    }
+  }
+}

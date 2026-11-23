@@ -49,3 +49,8 @@ ec2_barco_volume_size   = 20
 
 
 
+
+# DNS Público Route 53 (SCRUM-29); registros preservados em dns_preserved_records
+domain_name         = "rioswesley.com.br"
+dashboard_subdomain = "painel"
+captain_subdomain   = "capitao"

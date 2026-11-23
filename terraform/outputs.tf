@@ -361,3 +361,27 @@ output "tls_boat_key_pem" {
   value       = tls_private_key.ferry_boat.private_key_pem
   sensitive   = true
 }
+
+# ------------------------------------------------------------------------------
+# DNS Público (SCRUM-29)
+# ------------------------------------------------------------------------------
+
+output "route53_name_servers" {
+  description = "Nameservers a cadastrar no Registro.br para delegar o domínio ao Route 53"
+  value       = aws_route53_zone.public.name_servers
+}
+
+output "dashboard_url" {
+  description = "URL pública do Dashboard Cartográfico"
+  value       = "https://${local.dashboard_fqdn}"
+}
+
+output "captain_panel_url" {
+  description = "URL pública do Painel do Capitão (EC2 do Nó Barco)"
+  value       = "http://${local.captain_fqdn}"
+}
+
+output "telemetry_grpc_endpoint" {
+  description = "Valor de CENTRAL_GRPC_URL no Nó Barco"
+  value       = "${var.grpc_custom_domain}:50051"
+}
