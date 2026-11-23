@@ -128,8 +128,17 @@ ferry-telemetry-tde/
 │   └── frontend/                  ---> [Apoio] Dashboard náutico com Leaflet (Next.js 16)
 │
 ├── docker/                        ---> Configurações de proxies de borda Nginx
-├── terraform/                     ---> IaC para VPC, ECS Fargate, ALB gRPC, RDS e SQS
-└── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+├── docs/                          ---> Especificação arquitetural, CI/CD e roteiro de testes de caos
+│   └── chaos-testing.md           ---> Evidências e comandos de carga até a quebra + Chaos Node Kill
+├── scripts/
+│   ├── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+│   └── resilience/
+│       └── particao-rede-24h.mjs  ---> Ensaio de partição de 24h (17.280 pacotes) com auditoria no PostgreSQL
+├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
+│   ├── alarms.tf                  ---> Alarmes CloudWatch (DLQ, erros 5XX no ALB e CPU ECS >= 80%)
+│   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
+├── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+└── docker-compose.partition.yml   ---> Sobreposição isolada do ensaio de partição (Toxiproxy + SQS)
 ```
 
 ### Execução do Nó Embarcado (SCRUM-10)
@@ -148,8 +157,8 @@ npm run start:dev
 Em Linux/macOS, substitua `Copy-Item` por `cp`. A API interna de bordo inicia na
 porta 3002 e disponibiliza `GET /health`. O setup declara os quatro módulos
 fundamentais e gera os tipos a partir do contrato canônico em `proto/telemetry.proto`.
-O simulador da SCRUM-13 publica amostras locais a cada 5s; buffer e resiliência
-do cliente serão conectados nas tarefas seguintes.
+O simulador da SCRUM-13 publica amostras a cada 5s. O buffer da SCRUM-15 persiste
+as coletas e conecta o envio automático ao cliente resiliente da SCRUM-14.
 Consulte [o guia do nó embarcado](ferry-boat/README.md) para geração de tipos,
 variáveis de ambiente, mTLS, testes e fluxo de versionamento do submódulo.
 
@@ -171,7 +180,8 @@ O IDL foi estendido com campos opcionais, preservando os anteriores:
 e timestamps são strings; `packet_id` permanece apenas no evento local.
 O modelo usa tanque cheio de 2000 L e entra em emergência se o combustível
 acabar, mantendo a geração. Consulte o guia do barco para configuração e testes.
-Não há calibração por dados reais nem persistência/envio automático do evento.
+Não há calibração por dados reais. O evento é consumido pelo buffer persistente
+da SCRUM-15 para retenção e envio automático.
 
 ### Cliente gRPC Resiliente (SCRUM-14)
 
@@ -184,11 +194,64 @@ No Compose, deadline e tentativas podem ser definidos no `.env` do orquestrador;
 na execução direta, use o `.env` do barco.
 
 Na primeira falha transitória, `telemetry.offline` sinaliza imediatamente o
-futuro buffer; `telemetry.delivery-settled` informa confirmação, rejeição,
-falha ou cancelamento. Os retries ativos pertencem ao cliente. Persistência,
-flush e conexão automática do simulador ao envio permanecem na SCRUM-15;
-sem consumidor, os eventos não garantem retenção. Consulte o guia do barco
+buffer; `telemetry.delivery-settled` informa confirmação, rejeição,
+falha ou cancelamento. Os retries ativos pertencem ao cliente; o buffer da
+SCRUM-15 persiste a coleta e coordena o descarregamento. Consulte o guia do barco
 para o contrato dos eventos, mTLS e configuração.
+
+### Buffer FIFO Persistente (SCRUM-15)
+
+O `BufferModule` consome o simulador, confirma a gravação em SQLite antes de
+enviar e mantém apenas uma janela de até `BUFFER_MAX_ITEMS=5000` pacotes em RAM.
+Os demais permanecem em disco no volume `boat-buffer`, sem descarte ao atingir
+o limite de memória. Um worker executa as transações fora do loop da API.
+O serviço do barco inicia independentemente da disponibilidade da Central.
+
+A ordem de entrada do fluxo de coleta é persistida e preservada entre RAM,
+disco e reinícios. Há uma RPC por vez; somente ACK aceito/duplicado do mesmo
+UUID remove o primeiro item. O descarregamento espera pelo menos 20ms após
+cada confirmação. Quedas transitórias retêm a cabeça da fila e retomam após
+os retries do cliente; erros permanentes bloqueiam sem descartar amostras.
+
+A API interna expõe `GET /telemetry/buffer/status` e `GET /telemetry/latest`
+na porta 3002. O primeiro retorna contadores RAM/disco e estado de envio;
+o segundo retorna a última coleta, inclusive após drenar/reiniciar, ou 404
+enquanto não há coleta persistida. Consulte o README do barco para os campos
+da API, parâmetros, formato SQLite e recuperação.
+
+### Ensaio de Partição de Rede de 24h (SCRUM-26)
+
+`scripts/resilience/particao-rede-24h.mjs` executa o ensaio ponta a ponta em um
+projeto Compose isolado (`ferry-scrum26`, com volumes próprios e removidos ao
+final), sobrepondo `docker-compose.partition.yml` ao ambiente local:
+
+```bash
+node scripts/resilience/particao-rede-24h.mjs            # 17.280 pacotes, partição blackhole
+node scripts/resilience/particao-rede-24h.mjs --help     # parâmetros
+```
+
+1. **Partição:** o barco fala com a Central via Toxiproxy; com o simulador em
+   navegação, a rota gRPC é cortada (`blackhole` descarta bytes como uma zona sem
+   sinal; `refuse` recusa conexões).
+2. **Acúmulo:** a coleta é acelerada (padrão 20ms, 250x) até 17.280 pacotes
+   pendentes, o equivalente a 24h a cada 5s. O ensaio exige que a RAM nunca passe de
+   `BUFFER_MAX_ITEMS`, que o excedente vá para disco e que o RSS do processo não
+   cresça mais que 64 MiB após a janela de RAM encher.
+3. **Manifesto:** o barco é parado, o SQLite é fotografado (UUID, sequência,
+   timestamp e posição de cada pacote) e o barco volta na cadência real de 5s,
+   ainda sem rede; o buffer precisa sobreviver ao reinício.
+4. **Drenagem:** o link é restaurado e a taxa é medida. A ordem dos ACKs nos
+   logs `buffer.delivered` deve seguir exatamente a ordem do manifesto.
+5. **Integridade:** após a fila SQS esvaziar, o manifesto é carregado no
+   PostgreSQL via `COPY` e comparado pacote a pacote (presença, `boat_id`,
+   `sequence_number`, `timestamp` em ms, latitude, longitude, velocidade, rumo).
+6. **Proteção da Central:** a Central roda no modo desacoplado (gRPC → SNS → SQS
+   → worker → PostgreSQL) com `mem_limit`; o pico de RSS deve ficar abaixo de 80%
+   do limite, sem OOM, sem reinícios e com DLQ vazia.
+
+O relatório (`relatorio.md`, `resultado.json` e `manifesto.csv`) é gravado em
+`reports/scrum-26/<data>/`; o código de saída é 0 quando os cinco critérios passam.
+As regras de aprovação têm testes próprios: `node --test "scripts/resilience/*.test.mjs"`.
 
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
@@ -262,7 +325,7 @@ Para garantir que o app **GitHub for Atlassian** vincule os artefatos de código
 6. **Code Review e Merge:** Após aprovação do revisor e aprovação no CI do GitHub Actions, o PR é mesclado na `main`.
 
 #### 3.2.4. Catálogo Canônico de Tarefas Jira e Branches Homologadas
-Todas as 23 tarefas cadastradas no Jira possuem suas respectivas branches padronizadas:
+Todas as tarefas cadastradas no Jira possuem suas respectivas branches padronizadas:
 
 | Chave Jira | Tarefa / Entregável | Sprint | Responsável | Branch Recomendada | Comando Git de Partida |
 | :--- | :--- | :---: | :--- | :--- | :--- |
@@ -289,6 +352,12 @@ Todas as 23 tarefas cadastradas no Jira possuem suas respectivas branches padron
 | **SCRUM-26** | Teste de Partição de Rede de 24h (17.280 pacotes)| S4 | Álex Lima | `feature/SCRUM-26-teste-particao-rede-24h` | `git checkout -b feature/SCRUM-26-teste-particao-rede-24h` |
 | **SCRUM-27** | Deploy e Validação End-to-End na Nuvem AWS | S4 | Rafael Figueiredo | `feature/SCRUM-27-deploy-aws-e2e` | `git checkout -b feature/SCRUM-27-deploy-aws-e2e` |
 | **SCRUM-28** | Documentação Final, Runbooks e Apresentação | S4 | Equipe | `docs/SCRUM-28-runbooks-apresentacao` | `git checkout -b docs/SCRUM-28-runbooks-apresentacao` |
+| **SCRUM-29** | DNS Amigável e Roteamento Público com AWS Route 53 | S4 | Wesley Rios | `feature/SCRUM-29-dns-route53-dominio` | `git checkout -b feature/SCRUM-29-dns-route53-dominio` |
+| **SCRUM-30** | Auto Scaling Horizontal no ECS Fargate via Terraform | S4 | Rafael Figueiredo | `feature/SCRUM-30-ecs-autoscaling-terraform` | `git checkout -b feature/SCRUM-30-ecs-autoscaling-terraform` |
+| **SCRUM-31** | Padrão Circuit Breaker no Cliente gRPC do Nó Barco | S4 | Álex Lima | `feature/SCRUM-31-circuit-breaker-barco` | `git checkout -b feature/SCRUM-31-circuit-breaker-barco` |
+| **SCRUM-32** | Logs Estruturados em JSON no Nó Central Python | S4 | Otavio Costa | `feature/SCRUM-32-logs-json-central` | `git checkout -b feature/SCRUM-32-logs-json-central` |
+| **SCRUM-33** | Alarmes Operacionais Básicos no CloudWatch via Terraform | S4 | Rafael Figueiredo | `feature/SCRUM-33-cloudwatch-alarms-terraform` | `git checkout -b feature/SCRUM-33-cloudwatch-alarms-terraform` |
+| **SCRUM-34** | mTLS Estrito no Listener gRPC do ALB via Trust Store S3 | S4 | Rafael Figueiredo | `feature/SCRUM-34-mtls-estrito-alb-terraform` | `git checkout -b feature/SCRUM-34-mtls-estrito-alb-terraform` |
 
 ---
 
@@ -341,45 +410,76 @@ O cronograma de implementação técnica está estruturado em fases sequenciais 
 
 ## 5. System Design do Projeto
 
-A arquitetura de System Design do projeto organiza-se em dois macroambientes: o **Nó Cliente Embarcado (Instância A - Barco)** e o **Nó Servidor Central (Instância B - Central de Terra)**, conectados pelo canal de telemetria gRPC sobre HTTP/2.
+A arquitetura de System Design do projeto organiza-se em quatro zonas interconectadas de ponta a ponta: o **Nó de Borda (Nó Embarcado - Ferry Boat / EC2 Borda)**, o **Enlace de Transmissão (WAN Intermitente)**, a **Borda da Nuvem (AWS Edge & Networking em Subnet Pública)** e o **Núcleo Central (AWS VPC em Subnet Privada)**, operando sob o canal de telemetria gRPC sobre HTTP/2 com mTLS estrito.
 
 ![System Design](docs/system-design.png)
 
-### 5.1. Nó Cliente Embarcado (Instância A - Barco)
+### 5.1. Nó de Borda (Nó Embarcado — Ferry Boat / EC2 Borda)
 
-- **Núcleo IoT Embarcado (NestJS):**
-  - **Simulador Náutico GPS:** Gera periodicamente (ciclos de 5s) a trajetória Salvador ↔ Itaparica.
-  - **Camada de Tolerância a Falhas (CAP / AP):** Buffer FIFO em memória com capacidade para até 5.000 amostras, integrado a backup persistente em disco (`telemetry_buffer_backup.json`) para garantir resiliência contra desligamento acidental da embarcação.
-  - **REST API Control & Status (Porta 3002):** Interface interna para fornecimento de métricas locais e estado do nó para a camada visual.
-  - **Cliente gRPC Resiliente:** Responsável pela invocação RPC, controle de deadline (2.500 ms), keepalive e propagação de Correlation ID.
-- **Apresentação & Borda:**
-  - **Borda Reversa Nginx (Porta 80 / 8080):** Rate limiting e hardening de rede.
-  - **Painel Tátil do Capitão (Next.js 16 Standalone na Porta 3000):** Controle de lotação, visualização da taxa de envio e estado da fila.
+O nó de borda simula fielmente a computação embarcada da balsa navegando na Baía de Todos-os-Santos (Salvador ↔ Itaparica), operando em container Docker com **Node.js 24 / NestJS 10**:
 
-### 5.2. Canal de Comunicação Distribuída
+- **GpsSimulatorService:** Gera a cada 5 segundos a cinemática e telemetria da embarcação: latitude/longitude, rumo, velocidade em nós, RPM e temperatura do motor, pressão de óleo, nível de combustível e diagnósticos de enlace celular.
+- **Camada de Resiliência Local (Tolerância a Partição / Teorema CAP - AP):**
+  - **FifoBufferService:** Buffer em memória de alta velocidade com capacidade de retenção de até 5.000 amostras.
+  - **SqliteBufferStore:** Persistência transacional em disco local (`buffer.sqlite`) executada em *Worker Thread* dedicada para isolamento de I/O assíncrono. Garante suporte a blackouts severos de até 24 horas contínuas (17.280 pacotes retidos sem estouro de memória RAM).
+  - **Circuit Breaker (Padrão Disjuntor):** Máquina de estados com três modos (`CLOSED`, `OPEN`, `HALF_OPEN`) com período de cooldown. Em caso de falha de conexão com a Central, interrompe rajadas contra o enlace celular e desvia novas leituras diretamente para o SQLite até a reabilitação da rota.
+- **Cliente gRPC Resiliente:** Compilado a partir do contrato IDL `proto/telemetry.proto` (`TelemetryService/IngestTelemetry`), opera com timeouts de deadline de 2.500 ms, keepalive ativo, canais multiplexados HTTP/2 e **autenticação mútua estrita (mTLS)** utilizando certificado de cliente (`boat.crt`), chave privada (`boat.key`) e autoridade certificadora raiz (`ca.crt`).
+- **Servidor Web Local e Apresentação de Bordo:**
+  - **Servidor Web Local (NestJS na Porta 3002):** Expõe endpoints locais (`/api/edge/health`, `/api/edge/telemetry/buffer/status` e `/api/edge/telemetry/latest`) para monitoramento de saúde e status do disjuntor.
+  - **Nginx de Borda (Porta 80):** Atua como proxy reverso local com *rate limiting* ativo (20 req/s), roteando requisições raiz (`/`) para o painel tátil e prefixadas (`/api/edge/*`) para a API interna do NestJS.
+  - **Painel Tátil do Capitão (Next.js 16 na Porta 3000):** Interface tátil com Tailwind CSS v4 para controle náutico, monitoramento de conectividade 4G/5G, status do disjuntor e pacotes retidos em tempo real.
 
-- **RPC Unária `TelemetryService/EnviarTelemetria`:** Executada sobre HTTP/2 com criptografia e autenticação mútua via **mTLS (Mutual TLS)** e Protocol Buffers v3 (`ferry.telemetry.v1`), transportando o `TelemetryPacket` (`message_id` UUIDv4, `boat_id`, `timestamp_coleta`, `passageiros`, `NavigationData`, `PropulsionData` e `NetworkDiagnostics`) e retornando o `TelemetryAck` com confirmação de entrega e carimbo de data/hora do servidor (`processado_em`).
+---
 
-### 5.3. Nó Servidor Central (Instância B - Central de Terra)
+### 5.2. Enlace de Transmissão (WAN — Canal Intermitente)
 
-- **Servidor de Ingestão (Python 3.14):**
-  - **Servidor gRPC Assíncrono (grpc.aio na Porta 50051):** Recepção de alto desempenho, validação de schema e verificação de integridade.
-  - **Mecanismo de Idempotência:** Controle estrito de duplicidade baseado na chave primária UUIDv4 com política `ON CONFLICT DO NOTHING`.
-- **Roteamento e Persistência:**
-  - **Modo Direto / Local:** Conexão direta via pool TCP assíncrono (porta 5432) com SQLAlchemy 2.0 / asyncpg para persistência no PostgreSQL 18.
-  - **Modo Nuvem Desacoplado (Mensageria Serverless AWS):** Publicação em tópico SNS (`ferry-telemetria-topic`) com fan-out para filas SQS (`ferry-db-writer-queue` para persistência em lote e `ferry-alerts-queue` para detecção de anomalias/lotação), contando com Dead Letter Queue (DLQ) com retenção de 14 dias e consumidor assíncrono.
-  - **Base de Dados Relacional:** PostgreSQL 18 contendo a tabela `telemetrias` com chave primária `message_id` e campo gerado computado `latencia_transito_ms` (`STORED`).
-- **Monitoramento Cartográfico:**
-  - **Borda Reversa Nginx (Porta 80 / 8081):** Headers de segurança e proxy HTTP.
-  - **Dashboard Cartográfico Náutico (Next.js 16 Standalone na Porta 3001):** Visualização espacial da rota em tempo real via Leaflet, OpenStreetMap e gráficos Recharts alimentados por API REST interna da Central.
-- **Arquitetura de Escalonamento Horizontal (Nó Central):**
-  - **Pool de Ingestão Elástico Serverless:** Tarefas elásticas no Amazon ECS com AWS Fargate executando o serviço `ferry-central` em Python 3.14 (`grpc.aio`), escalando sob demanda sem necessidade de instâncias EC2 subjacentes.
-  - **Balanceamento L7 gRPC:** Ingress / ALB distribuindo streams HTTP/2 por algoritmo round-robin ou least-outstanding-requests diretamente aos nós de ingestão saudáveis.
-  - **Provisionamento e Orquestração Serverless (Terraform + ECS Fargate + GitHub Actions):**
-    - **Terraform:** Gerencia 100% da infraestrutura declarativa (criação do Cluster ECS, Task Definitions, ECS Services, Application Load Balancers, tópicos SNS, filas SQS e banco RDS).
-    - **AWS Fargate + CloudWatch:** Orquestra o auto-scaling dinâmico dos contêineres: a ingestão gRPC escala por CPU/conexões e os workers de banco escalam instantaneamente pelo volume de mensagens na fila SQS (`ApproximateNumberOfMessagesVisible`), esvaziando rajadas de 24h sem servidores ociosos.
-    - **GitHub Actions + Amazon ECR:** Executa a esteira automatizada de build, push de imagens versionadas e rolling update transparente das tarefas no ECS Fargate.
-  - **Consistência em Múltiplos Nós:** Como múltiplas instâncias da central podem receber pacotes retransmitidos simultaneamente pelo buffer do barco, a idempotência transacional (`ON CONFLICT (message_id) DO NOTHING` no PostgreSQL) garante a integridade dos dados independente de qual nó processe a requisição.
+- **Meio de Transmissão:** Enlace celular 4G/5G costeiro ao longo da Baía de Todos-os-Santos, caracterizado por descontinuidades temporárias de sinal, desvanecimento por relevo e variações térmicas/marítimas.
+- **Fundamentação no Teorema CAP:**
+  - **Na Borda (AP - Availability & Partition Tolerance):** A embarcação prioriza a continuidade operacional local. Leituras nunca são descartadas; são retidas ordenadamente no buffer em disco mesmo durante desligamentos prolongados.
+  - **Na Central (Consistência Eventual):** Quando o canal gRPC é reestabelecido, os pacotes represados são drenados sequencialmente e persistidos sem duplicidades na base de dados central em terra.
+
+---
+
+### 5.3. Borda da Nuvem (AWS Edge & Networking — Subnet Pública)
+
+- **AWS Route 53 (DNS Público):**
+  - Resolução de nomes amigáveis em conformidade com o barema: `telemetry.rioswesley.com.br` (Ingestão gRPC), `painel.rioswesley.com.br` (Dashboard Central) e `capitao.rioswesley.com.br` (Nó Barco).
+- **Application Load Balancer L7 (Multi-AZ na Subnet Pública):**
+  - **Listener gRPC (`:50051`):** Terminação TLS 1.3 / HTTP/2 com **mTLS estrito** (`mode = "verify"`) validado por *Trust Store* no Amazon S3 via CA raiz do projeto. Conexões sem o certificado emitido pela CA são rejeitadas sumariamente no handshake criptográfico.
+  - **Listener Web (`:80`):** Roteamento inteligente por path:
+    - `/api/*` e `/health` direcionados para o Target Group da Ingestão REST FastAPI (`:8000`).
+    - `/*` direcionado para o Target Group do Dashboard Cartográfico Next.js (`:80`).
+- **NAT Gateway Multi-AZ:** Localizado na Subnet Pública, provê saída segura à internet para os nós computacionais Fargate sem expor endereços IP públicos nas tarefas privadas.
+
+---
+
+### 5.4. Núcleo Central (Subnet Privada — AWS VPC & ECS Fargate)
+
+Toda a computação, mensageria e dados operam **estritamente em Subnets Privadas Multi-AZ** (`assign_public_ip = false`), eliminando portas SSH e qualquer acesso direto externo:
+
+- **Serviço de Ingestão (`ferry-central-ingestion-prod` no AWS ECS Fargate):**
+  - Desenvolvido em **Python 3.14** assíncrono (`grpc.aio` na porta `:50051` e `FastAPI` na porta `:8000`).
+  - Totalmente *stateless*: valida o esquema binário Protobuf v3 e o `message_id` UUIDv4.
+  - Publica o evento de telemetria no **Amazon SNS** via **AWS SDK / HTTPS (`boto3`)** em ~2 ms, retornando o ACK gRPC imediato para o barco.
+  - **Auto Scaling Horizontal:** Política de *Target Tracking* baseada em utilização de CPU (`ECSServiceAverageCPUUtilization > 70%`), escalando réplicas dinamicamente sob picos de tráfego gRPC.
+  - Emite logs estruturados em **JSON padrão ISO 8601 UTC `Z`** diretamente para o CloudWatch.
+- **Pipeline Assíncrono de Mensageria (Amazon SNS + SQS):**
+  - **Amazon SNS (`ferry-telemetria-topic`):** Tópico de alta vazão operando em padrão Fanout.
+  - **Amazon SQS (`ferry-db-writer-queue`):** Fila principal desacoplada com retenção de 4 dias e *visibility timeout* de 30s, absorvendo rajadas de drenagem pós-partição (*Thundering Herd*).
+  - **Dead Letter Queue (`ferry-telemetry-dlq`):** Isola mensagens malformatadas após 3 tentativas malsucedidas de processamento.
+- **Serviço Worker Consumidor (`ferry-central-worker-prod` no AWS ECS Fargate):**
+  - Processo Python assíncrono em segundo plano consumindo a fila SQS em lotes de até 10 mensagens (`Batch = 10`).
+  - Executa filtro de **idempotência estrita** via cláusula transacional `ON CONFLICT (message_id) DO NOTHING` com SQLAlchemy 2.0 e driver `asyncpg`.
+  - Persiste lotes bulk no banco de dados e emite logs estruturados JSON com total de pacotes inseridos e duplicados.
+- **Banco de Dados Relacional (Amazon RDS PostgreSQL 18):**
+  - Instância gerenciada `db.t4g.micro` operando em **Single-AZ com Point-in-Time Recovery (PITR)** e backups diários automatizados no Amazon S3.
+  - Tabela canônica `telemetria` particionada/indexada por `timestamp`, `boat_id` e `sequence_number`.
+- **Serviço Dashboard Central (`ferry-central-dashboard-prod` no AWS ECS Fargate):**
+  - Container com Nginx reverso e aplicação **Next.js 16** com mapa interativo náutico (**Leaflet.js**).
+  - Consome dados em tempo real da Ingestão REST API (`/api/telemetry/latest` e `/api/telemetry/history`) para plotar a posição geográfica, velocidade e histórico de trilha das embarcações.
+- **Observabilidade Centralizada (AWS CloudWatch):**
+  - Grupos de logs dedicados (`/ecs/ferry-central-ingestion-prod`, `/ecs/ferry-central-worker-prod`, `/ecs/ferry-central-dashboard-prod`).
+  - Alarmes operacionais com gatilhos automáticos: `ferry-alb-target-5xx-alarm-prod` (erros 5xx), `ferry-dlq-messages-alarm-prod` (mensagens na DLQ) e `ferry-ingestion-cpu-high-alarm-prod` (CPU alta).
 
 ---
 

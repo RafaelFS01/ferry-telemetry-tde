@@ -1,0 +1,90 @@
+# Ensaio de partição de rede de 24h (SCRUM-26) — sobreposição do docker-compose.local.yml.
+#
+# Não suba manualmente: o script abaixo cria um projeto Compose isolado
+# (`ferry-scrum26`, volumes próprios), executa o ensaio e o remove ao final.
+#   node scripts/resilience/particao-rede-24h.mjs
+#
+# Diferenças em relação ao ambiente local:
+#   - O barco fala com a Central através do Toxiproxy, que corta e restaura a rota gRPC.
+#   - A Central opera no modo desacoplado (gRPC -> SNS -> SQS -> worker -> PostgreSQL),
+#     com limite de memória, para comprovar que a drenagem é absorvida pela fila.
+#   - Barco, Central e worker executam sem watchers (PID 1 = processo da aplicação),
+#     o que permite medir RSS em /proc/1/status sem ruído de ferramentas de dev.
+#   - Painéis e bordas Nginx ficam no profile `interface` e não sobem no ensaio.
+#   - Apenas a API do barco e a API do Toxiproxy são publicadas, em 127.0.0.1.
+
+x-partition-database-url: &partition-database-url >-
+  postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
+
+services:
+  postgres:
+    ports: !reset []
+
+  localstack:
+    ports: !reset []
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./docker/toxiproxy/toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "127.0.0.1:${PARTITION_TOXIPROXY_PORT:-8474}:8474"
+
+  ferry-migrate:
+    build:
+      context: ./ferry-central
+      dockerfile: ../docker/dev/central.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: *partition-database-url
+    volumes:
+      - ./ferry-central:/app
+
+  ferry-central:
+    command: ["python", "-m", "src.server.main"]
+    ports: !reset []
+    mem_limit: ${PARTITION_CENTRAL_MEM_LIMIT:-512m}
+    depends_on:
+      ferry-migrate:
+        condition: service_completed_successfully
+    environment:
+      INGESTION_MODE: decoupled
+      LOG_LEVEL: WARNING
+
+  ferry-worker:
+    command: ["python", "-m", "src.worker.main"]
+    mem_limit: ${PARTITION_WORKER_MEM_LIMIT:-512m}
+    depends_on:
+      ferry-migrate:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: WARNING
+
+  ferry-boat:
+    # nest build sem proto:generate: o stub TS versionado é reutilizado e o
+    # .proto vem do bind mount /proto, evitando reescrever arquivos do submódulo.
+    command: ["sh", "-c", "[ -x node_modules/.bin/nest ] || npm ci; npx nest build && exec node dist/main.js"]
+    ports: !override
+      - "127.0.0.1:${PARTITION_BOAT_PORT:-3102}:3002"
+    mem_limit: ${PARTITION_BOAT_MEM_LIMIT:-512m}
+    environment:
+      CENTRAL_GRPC_URL: toxiproxy:50052
+      TELEMETRY_INTERVAL_MS: ${PARTITION_TELEMETRY_INTERVAL_MS:-5000}
+      NO_COLOR: "1"
+
+  captain-panel:
+    profiles: ["interface"]
+
+  dashboard:
+    profiles: ["interface"]
+
+  nginx-edge:
+    profiles: ["interface"]
+
+  nginx-central:
+    profiles: ["interface"]
