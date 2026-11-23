@@ -33,3 +33,6 @@ venv/
 
 # Exemplo de variáveis de ambiente (versionado)
 !.env.example
+
+# Ensaio de partição (SCRUM-26): manifesto CSV completo (~2,7 MB) fica só local
+reports/**/manifesto.csv

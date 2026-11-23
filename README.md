@@ -131,11 +131,14 @@ ferry-telemetry-tde/
 ├── docs/                          ---> Especificação arquitetural, CI/CD e roteiro de testes de caos
 │   └── chaos-testing.md           ---> Evidências e comandos de carga até a quebra + Chaos Node Kill
 ├── scripts/
-│   └── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+│   ├── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+│   └── resilience/
+│       └── particao-rede-24h.mjs  ---> Ensaio de partição de 24h (17.280 pacotes) com auditoria no PostgreSQL
 ├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
 │   ├── alarms.tf                  ---> Alarmes CloudWatch (DLQ, erros 5XX no ALB e CPU ECS >= 80%)
 │   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
-└── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+├── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+└── docker-compose.partition.yml   ---> Sobreposição isolada do ensaio de partição (Toxiproxy + SQS)
 ```
 
 ### Execução do Nó Embarcado (SCRUM-10)
@@ -215,6 +218,40 @@ na porta 3002. O primeiro retorna contadores RAM/disco e estado de envio;
 o segundo retorna a última coleta, inclusive após drenar/reiniciar, ou 404
 enquanto não há coleta persistida. Consulte o README do barco para os campos
 da API, parâmetros, formato SQLite e recuperação.
+
+### Ensaio de Partição de Rede de 24h (SCRUM-26)
+
+`scripts/resilience/particao-rede-24h.mjs` executa o ensaio ponta a ponta em um
+projeto Compose isolado (`ferry-scrum26`, com volumes próprios e removidos ao
+final), sobrepondo `docker-compose.partition.yml` ao ambiente local:
+
+```bash
+node scripts/resilience/particao-rede-24h.mjs            # 17.280 pacotes, partição blackhole
+node scripts/resilience/particao-rede-24h.mjs --help     # parâmetros
+```
+
+1. **Partição:** o barco fala com a Central via Toxiproxy; com o simulador em
+   navegação, a rota gRPC é cortada (`blackhole` descarta bytes como uma zona sem
+   sinal; `refuse` recusa conexões).
+2. **Acúmulo:** a coleta é acelerada (padrão 20ms, 250x) até 17.280 pacotes
+   pendentes, o equivalente a 24h a cada 5s. O ensaio exige que a RAM nunca passe de
+   `BUFFER_MAX_ITEMS`, que o excedente vá para disco e que o RSS do processo não
+   cresça mais que 64 MiB após a janela de RAM encher.
+3. **Manifesto:** o barco é parado, o SQLite é fotografado (UUID, sequência,
+   timestamp e posição de cada pacote) e o barco volta na cadência real de 5s,
+   ainda sem rede; o buffer precisa sobreviver ao reinício.
+4. **Drenagem:** o link é restaurado e a taxa é medida. A ordem dos ACKs nos
+   logs `buffer.delivered` deve seguir exatamente a ordem do manifesto.
+5. **Integridade:** após a fila SQS esvaziar, o manifesto é carregado no
+   PostgreSQL via `COPY` e comparado pacote a pacote (presença, `boat_id`,
+   `sequence_number`, `timestamp` em ms, latitude, longitude, velocidade, rumo).
+6. **Proteção da Central:** a Central roda no modo desacoplado (gRPC → SNS → SQS
+   → worker → PostgreSQL) com `mem_limit`; o pico de RSS deve ficar abaixo de 80%
+   do limite, sem OOM, sem reinícios e com DLQ vazia.
+
+O relatório (`relatorio.md`, `resultado.json` e `manifesto.csv`) é gravado em
+`reports/scrum-26/<data>/`; o código de saída é 0 quando os cinco critérios passam.
+As regras de aprovação têm testes próprios: `node --test "scripts/resilience/*.test.mjs"`.
 
 ### Links dos Repositórios:
 - **Repositório Principal (Orquestrador):** [https://github.com/RafaelFS01/ferry-telemetry-tde](https://github.com/RafaelFS01/ferry-telemetry-tde)
