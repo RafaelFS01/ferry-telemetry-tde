@@ -132,12 +132,6 @@ variable "sqs_db_writer_queue_name" {
   default     = "ferry-db-writer-queue"
 }
 
-variable "sqs_alerts_queue_name" {
-  description = "Nome da fila SQS para processamento de alertas críticos"
-  type        = string
-  default     = "ferry-alerts-queue"
-}
-
 variable "sqs_dlq_name" {
   description = "Nome da Dead Letter Queue (DLQ) para mensagens com falha"
   type        = string

@@ -127,6 +127,43 @@ resource "aws_lb_target_group" "ferry_dashboard_tg" {
 }
 
 # ------------------------------------------------------------------------------
+# 3.2. Target Group: Painel do Capitão no Nó Barco (Porta 80)
+# ------------------------------------------------------------------------------
+
+resource "aws_lb_target_group" "ferry_captain_tg" {
+  name        = "tg-ferry-captain-${var.environment}"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = aws_vpc.ferry_vpc.id
+
+  health_check {
+    enabled             = true
+    protocol            = "HTTP"
+    path                = "/"
+    port                = "80"
+    matcher             = "200"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 15
+  }
+
+  tags = {
+    Name        = "tg-ferry-captain-${var.environment}"
+    Component   = "CaptainPanel"
+    Protocol    = "HTTP"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_target_group_attachment" "ferry_captain_attachment" {
+  target_group_arn = aws_lb_target_group.ferry_captain_tg.arn
+  target_id        = aws_instance.ferry_barco.id
+  port             = 80
+}
+
+# ------------------------------------------------------------------------------
 # 4. Certificados CA, ALB TLS (com SAN do DNS do ALB) e Cliente Barco (SCRUM-27)
 # ------------------------------------------------------------------------------
 
@@ -406,6 +443,45 @@ resource "aws_lb_listener_rule" "dashboard_https_redirect" {
   condition {
     host_header {
       values = [local.dashboard_fqdn]
+    }
+  }
+}
+
+# http://capitao.<domínio> sobe para HTTPS
+resource "aws_lb_listener_rule" "captain_https_redirect" {
+  listener_arn = aws_lb_listener.http_listener.arn
+  priority     = 2
+
+  action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+
+  condition {
+    host_header {
+      values = [local.captain_fqdn]
+    }
+  }
+}
+
+# https://capitao.<domínio> roteia para o Painel do Capitão no Nó Barco
+resource "aws_lb_listener_rule" "https_captain_rule" {
+  listener_arn = aws_lb_listener.https_listener.arn
+  priority     = 20
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ferry_captain_tg.arn
+  }
+
+  condition {
+    host_header {
+      values = [local.captain_fqdn]
     }
   }
 }

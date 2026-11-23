@@ -148,16 +148,6 @@ output "sqs_db_writer_queue_arn" {
   value       = aws_sqs_queue.ferry_db_writer_queue.arn
 }
 
-output "sqs_alerts_queue_url" {
-  description = "URL da fila SQS para notificações e alertas críticos"
-  value       = aws_sqs_queue.ferry_alerts_queue.id
-}
-
-output "sqs_alerts_queue_arn" {
-  description = "ARN da fila SQS para notificações e alertas críticos"
-  value       = aws_sqs_queue.ferry_alerts_queue.arn
-}
-
 output "sqs_dlq_url" {
   description = "URL da Dead Letter Queue (DLQ) para mensagens descartadas após 5 tentativas"
   value       = aws_sqs_queue.ferry_telemetry_dlq.id
@@ -377,8 +367,8 @@ output "dashboard_url" {
 }
 
 output "captain_panel_url" {
-  description = "URL pública do Painel do Capitão (EC2 do Nó Barco)"
-  value       = "http://${local.captain_fqdn}"
+  description = "URL pública do Painel do Capitão (EC2 do Nó Barco via ALB HTTPS)"
+  value       = "https://${local.captain_fqdn}"
 }
 
 output "telemetry_grpc_endpoint" {
@@ -414,14 +404,19 @@ output "z_resumo_operacional_deploy" {
   --------------------------------------------------------------------------------
   [2] LINKS DE ACESSO NO NAVEGADOR (Copie e cole na barra de endereços do browser)
 
-      * Painel do Capitão (Nó Borda - Barco):
-        http://${aws_eip.ferry_barco_eip.public_ip}/
+      * Painel do Capitão (Nó Borda - Barco - HTTPS):
+        https://${local.captain_fqdn}/
+        (ou via IP direto em HTTP: http://${aws_eip.ferry_barco_eip.public_ip}/)
 
-      * Dashboard Cartográfico Central (Nuvem AWS):
-        http://${aws_lb.ferry_alb.dns_name}/
+      * Dashboard Cartográfico Central (Nuvem AWS - HTTPS):
+        https://${local.dashboard_fqdn}/
+        (ou via ALB direto: http://${aws_lb.ferry_alb.dns_name}/)
 
       * API REST de Telemetria (Central):
-        http://${aws_lb.ferry_alb.dns_name}/api/telemetry/latest
+        https://${local.dashboard_fqdn}/api/telemetry/latest
+
+      * Ingestão gRPC do Nó Barco (Backend mTLS na Porta 50051):
+        ${var.grpc_custom_domain}:50051
   ================================================================================
   EOT
 }

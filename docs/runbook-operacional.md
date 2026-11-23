@@ -313,7 +313,7 @@ Se você ou sua equipe possuírem um domínio registrado (por exemplo, `rioswesl
   | Subdomínio | Destino | Protocolo |
   | :--- | :--- | :--- |
   | `https://painel.rioswesley.com.br/` | Central Dashboard | HTTPS (:443 com certificado público ACM) |
-  | `http://capitao.rioswesley.com.br/` | Painel do Capitão | HTTP (:80 no Elastic IP da EC2) |
+  | `https://capitao.rioswesley.com.br/` | Painel do Capitão | HTTPS (:443 via ALB com HTTP 301 redirect para a EC2) |
   | `telemetry.rioswesley.com.br:50051` | Ingestão gRPC | HTTP/2 mTLS com a CA do projeto |
 
 *(Para detalhes da sequência de validação do certificado público ACM, consulte [docs/dns.md](file:///c:/Users/rafa_/Cursor/ferry-telemetry-tde/docs/dns.md)).*

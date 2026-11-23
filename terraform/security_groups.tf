@@ -244,6 +244,17 @@ resource "aws_security_group_rule" "fargate_ingress_alb_http" {
   security_group_id        = aws_security_group.sg_ferry_fargate.id
 }
 
+# ALB -> EC2 Barco (Nginx Painel do Capitão :80)
+resource "aws_security_group_rule" "alb_egress_barco_http" {
+  type                     = "egress"
+  description              = "Roteamento HTTP do ALB para o Painel do Capitao na EC2 Barco"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.sg_ferry_barco.id
+  security_group_id        = aws_security_group.sg_ferry_alb.id
+}
+
 # Fargate <-> Fargate (Nginx Central -> REST API Ingestion :8000 via Cloud Map) (SCRUM-27)
 resource "aws_security_group_rule" "fargate_self_ingress_rest" {
   type              = "ingress"

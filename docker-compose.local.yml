@@ -70,8 +70,8 @@ services:
       - ./docker/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh:ro
       - localstack-data:/var/lib/localstack
     healthcheck:
-      # Só fica healthy depois que o script de init criou a última fila
-      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ferry-alerts-queue >/dev/null 2>&1"]
+      # Só fica healthy depois que o script de init criou a fila principal
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ferry-db-writer-queue >/dev/null 2>&1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -95,7 +95,6 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
       SNS_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-us-east-1}:000000000000:ferry-telemetria-topic
       SQS_DB_WRITER_QUEUE_URL: ${SQS_DB_WRITER_QUEUE_URL:-http://localstack:4566/000000000000/ferry-db-writer-queue}
-      SQS_ALERTS_QUEUE_URL: ${SQS_ALERTS_QUEUE_URL:-http://localstack:4566/000000000000/ferry-alerts-queue}
     ports:
       - "50051:50051"
       - "8000:8000"
