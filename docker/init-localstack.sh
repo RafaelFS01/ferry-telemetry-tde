@@ -1,12 +1,12 @@
 #!/bin/bash
 # Provisiona a mensageria local no LocalStack (executado em /etc/localstack/init/ready.d).
-# Espelha o desenho de produção: tópico SNS com fan-out para duas filas SQS,
-# cada uma com sua DLQ (3 tentativas, retenção de 14 dias).
+# Espelha o desenho de produção: tópico SNS com entrega para a fila SQS do worker,
+# com sua DLQ (3 tentativas, retenção de 14 dias).
 set -euo pipefail
 
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 TOPIC_NAME="ferry-telemetria-topic"
-QUEUES=("ferry-db-writer-queue" "ferry-alerts-queue")
+QUEUES=("ferry-db-writer-queue")
 MAX_RECEIVE_COUNT=3
 DLQ_RETENTION_SECONDS=1209600 # 14 dias
 

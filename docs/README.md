@@ -114,7 +114,7 @@ Tanque inicialmente cheio de 2000 L, consumo integrado e parada em emergência
 ao esgotar o combustível, preservando a emissão de amostras.
 
 Habilitação, tempo de atracação, capacidade e seed são configuráveis pelo ambiente
-do barco. A seed reproduz sensores e não UUIDs. Passageiros e diagnósticos de rede
+do barco. A seed reproduz sensores e não UUIDs. Diagnósticos de rede
 usam placeholders documentados no guia do barco. Rota, maré e motores são
 sintéticos, sem calibração por embarcação real. A entrega não implementa fila
 persistente, retransmissão, armazenamento dos novos campos na Central ou painéis.

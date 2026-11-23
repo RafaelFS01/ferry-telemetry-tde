@@ -72,7 +72,8 @@ message TelemetryPacket {
   string message_id = 1;             // Identificador único universal (UUIDv4) para garantia estrita de idempotência
   string boat_id = 2;                // Identificador unívoco da embarcação (ex.: "ferry-ivete-sangalo")
   int64 timestamp_coleta = 3;        // Carimbo de tempo Epoch em milissegundos registrado na origem (barco)
-  int32 passageiros = 4;             // Quantidade de passageiros a bordo na viagem atual (0 a 1000)
+  reserved 4;                        // Campo descontinuado: telemetria estritamente náutica (lotação/passageiros removidos)
+  reserved "passageiros";
   NavigationData navegacao = 5;      // Métricas de navegação e posicionamento GPS
   PropulsionData propulsao = 6;      // Métricas de propulsão náutica e telemetria de máquina
   NetworkDiagnostics rede = 7;       // Diagnóstico de conectividade de rede e estado do buffer offline

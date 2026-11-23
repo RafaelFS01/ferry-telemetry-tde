@@ -70,13 +70,17 @@ resource "aws_route53_record" "dashboard" {
   }
 }
 
-# Painel do Capitão no Elastic IP da EC2 do Nó Barco
+# Painel do Capitão (:443 HTTPS com certificado público via ALB)
 resource "aws_route53_record" "captain" {
   zone_id = aws_route53_zone.public.zone_id
   name    = local.captain_fqdn
   type    = "A"
-  ttl     = 300
-  records = [aws_eip.ferry_barco_eip.public_ip]
+
+  alias {
+    name                   = aws_lb.ferry_alb.dns_name
+    zone_id                = aws_lb.ferry_alb.zone_id
+    evaluate_target_health = false
+  }
 }
 
 # ------------------------------------------------------------------------------

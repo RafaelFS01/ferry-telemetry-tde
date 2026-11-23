@@ -56,29 +56,7 @@ resource "aws_sqs_queue" "ferry_db_writer_queue" {
 }
 
 # ------------------------------------------------------------------------------
-# 4. Fila SQS de Alertas (Notificações Críticas de Sensores)
-# ------------------------------------------------------------------------------
-
-resource "aws_sqs_queue" "ferry_alerts_queue" {
-  name                       = var.sqs_alerts_queue_name
-  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
-  message_retention_seconds  = var.sqs_message_retention_seconds
-  sqs_managed_sse_enabled    = true
-
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.ferry_telemetry_dlq.arn
-    maxReceiveCount     = var.sqs_max_receive_count
-  })
-
-  tags = {
-    Name      = var.sqs_alerts_queue_name
-    Component = "Messaging"
-    Tier      = "Alerts-Queue"
-  }
-}
-
-# ------------------------------------------------------------------------------
-# 5. Políticas de Acesso SQS (Autoriza o SNS a publicar nas filas)
+# 4. Política de Acesso SQS (Autoriza o SNS a publicar na fila do DB Writer)
 # ------------------------------------------------------------------------------
 
 resource "aws_sqs_queue_policy" "ferry_db_writer_queue_policy" {
@@ -105,44 +83,13 @@ resource "aws_sqs_queue_policy" "ferry_db_writer_queue_policy" {
   })
 }
 
-resource "aws_sqs_queue_policy" "ferry_alerts_queue_policy" {
-  queue_url = aws_sqs_queue.ferry_alerts_queue.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowSNSPublishToAlertsQueue"
-        Effect = "Allow"
-        Principal = {
-          Service = "sns.amazonaws.com"
-        }
-        Action   = "sqs:SendMessage"
-        Resource = aws_sqs_queue.ferry_alerts_queue.arn
-        Condition = {
-          ArnEquals = {
-            "aws:SourceArn" = aws_sns_topic.ferry_telemetry_topic.arn
-          }
-        }
-      }
-    ]
-  })
-}
-
 # ------------------------------------------------------------------------------
-# 6. Subscrições Fan-Out SNS -> SQS
+# 5. Subscrição Fan-Out SNS -> Fila SQS Principal
 # ------------------------------------------------------------------------------
 
 resource "aws_sns_topic_subscription" "db_writer_subscription" {
   topic_arn            = aws_sns_topic.ferry_telemetry_topic.arn
   protocol             = "sqs"
   endpoint             = aws_sqs_queue.ferry_db_writer_queue.arn
-  raw_message_delivery = true
-}
-
-resource "aws_sns_topic_subscription" "alerts_subscription" {
-  topic_arn            = aws_sns_topic.ferry_telemetry_topic.arn
-  protocol             = "sqs"
-  endpoint             = aws_sqs_queue.ferry_alerts_queue.arn
   raw_message_delivery = true
 }

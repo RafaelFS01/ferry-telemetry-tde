@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Script de Validacao e Healthcheck Automatizado - AWS SNS & SQS (SCRUM-16)
 # Projeto: ferry-telemetry-tde | Modulo: Messaging
 # ==============================================================================
@@ -10,7 +10,6 @@ Write-Host "====================================================================
 $region = "us-east-1"
 $topicName = "ferry-telemetria-topic"
 $dbQueueName = "ferry-db-writer-queue"
-$alertsQueueName = "ferry-alerts-queue"
 $dlqName = "ferry-telemetry-dlq"
 
 # 1. Obter ARN do Topico SNS
@@ -50,20 +49,8 @@ Write-Host "    [✓] Fila DB Writer Ativa: $dbQueueArn" -ForegroundColor Green
 Write-Host "        - Timeout de Visibilidade: $($dbQueueAttrs.VisibilityTimeout) segundos" -ForegroundColor Green
 Write-Host "        - RedrivePolicy: $($dbQueueAttrs.RedrivePolicy)" -ForegroundColor Green
 
-# 4. Validar Fila de Alertas Criticos
-Write-Host "`n[4] VALIDANDO FILA DE ALERTAS..." -ForegroundColor Yellow
-$alertsQueueUrl = (aws sqs get-queue-url --queue-name $alertsQueueName --region $region 2>$null | ConvertFrom-Json).QueueUrl
-if (-not $alertsQueueUrl) {
-    Write-Host "[X] ERRO: Fila '$alertsQueueName' nao encontrada!" -ForegroundColor Red
-    exit 1
-}
-$alertsQueueAttrs = (aws sqs get-queue-attributes --queue-url $alertsQueueUrl --attribute-names All --region $region | ConvertFrom-Json).Attributes
-$alertsQueueArn = $alertsQueueAttrs.QueueArn
-Write-Host "    [✓] Fila Alerts Ativa: $alertsQueueArn" -ForegroundColor Green
-Write-Host "        - RedrivePolicy: $($alertsQueueAttrs.RedrivePolicy)" -ForegroundColor Green
-
-# 5. Validar Subscricoes Fan-Out SNS -> SQS
-Write-Host "`n[5] VALIDANDO SUBSCRICOES FAN-OUT SNS -> SQS..." -ForegroundColor Yellow
+# 4. Validar Subscricao Fan-Out SNS -> SQS
+Write-Host "`n[4] VALIDANDO SUBSCRICAO SNS -> SQS..." -ForegroundColor Yellow
 $subs = (aws sns list-subscriptions-by-topic --topic-arn $topicArn --region $region | ConvertFrom-Json).Subscriptions
 Write-Host "    [✓] Subscricoes ativas encontradas: $($subs.Count)" -ForegroundColor Green
 foreach ($sub in $subs) {
