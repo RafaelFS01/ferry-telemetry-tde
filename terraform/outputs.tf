@@ -361,3 +361,68 @@ output "tls_boat_key_pem" {
   value       = tls_private_key.ferry_boat.private_key_pem
   sensitive   = true
 }
+
+# ------------------------------------------------------------------------------
+# DNS Público (SCRUM-29)
+# ------------------------------------------------------------------------------
+
+output "route53_name_servers" {
+  description = "Nameservers a cadastrar no Registro.br para delegar o domínio ao Route 53"
+  value       = aws_route53_zone.public.name_servers
+}
+
+output "dashboard_url" {
+  description = "URL pública do Dashboard Cartográfico"
+  value       = "https://${local.dashboard_fqdn}"
+}
+
+output "captain_panel_url" {
+  description = "URL pública do Painel do Capitão (EC2 do Nó Barco)"
+  value       = "http://${local.captain_fqdn}"
+}
+
+output "telemetry_grpc_endpoint" {
+  description = "Valor de CENTRAL_GRPC_URL no Nó Barco"
+  value       = "${var.grpc_custom_domain}:50051"
+}
+
+# ------------------------------------------------------------------------------
+# Resumo Operacional de Deploy (Destino e Finalidade das Informações)
+# ------------------------------------------------------------------------------
+
+output "z_resumo_operacional_deploy" {
+  description = "Guia com o destino e a finalidade de cada informação gerada pelo Terraform"
+  value = <<-EOT
+
+  ================================================================================
+  >>> GUIA PÓS-APPLY: ONDE USAR CADA INFORMAÇÃO <<<
+  ================================================================================
+
+  [1] VARIÁVEIS DO GITHUB ACTIONS (Settings -> Secrets and variables -> Actions -> Variables)
+      URL Direta: https://github.com/${var.github_repository}/settings/variables/actions
+
+      * EDGE_INSTANCE_ID = ${aws_instance.ferry_barco.id}
+        -> O QUE É: ID da máquina EC2 do Barco criada na AWS.
+        -> QUANDO USAR: Atualize esta variável toda vez que a máquina for recriada pelo Terraform
+           para que o workflow "CD Edge (EC2 Barco)" saiba para onde enviar o rollout SSM.
+
+      * AWS_DEPLOY_ROLE_ARN = ${aws_iam_role.github_deploy.arn}
+        -> O QUE É: ARN do papel IAM de deploy autenticado via GitHub OIDC (sem senhas estáticas).
+        -> QUANDO USAR: Cadastre no GitHub caso alguém esteja subindo o projeto pela primeira
+           vez do zero em sua própria conta AWS (se já foi cadastrado uma vez, não precisa mexer).
+
+  --------------------------------------------------------------------------------
+  [2] LINKS DE ACESSO NO NAVEGADOR (Copie e cole na barra de endereços do browser)
+
+      * Painel do Capitão (Nó Borda - Barco):
+        http://${aws_eip.ferry_barco_eip.public_ip}/
+
+      * Dashboard Cartográfico Central (Nuvem AWS):
+        http://${aws_lb.ferry_alb.dns_name}/
+
+      * API REST de Telemetria (Central):
+        http://${aws_lb.ferry_alb.dns_name}/api/telemetry/latest
+  ================================================================================
+  EOT
+}
+
