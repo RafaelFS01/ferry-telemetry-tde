@@ -10,14 +10,8 @@
 #     com limite de memória, para comprovar que a drenagem é absorvida pela fila.
 #   - Barco, Central e worker executam sem watchers (PID 1 = processo da aplicação),
 #     o que permite medir RSS em /proc/1/status sem ruído de ferramentas de dev.
+#   - Painéis e bordas Nginx ficam no profile `interface` e não sobem no ensaio.
 #   - Apenas a API do barco e a API do Toxiproxy são publicadas, em 127.0.0.1.
-
-x-partition-aws: &partition-aws
-  AWS_REGION: ${AWS_REGION:-us-east-1}
-  AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
-  AWS_ACCESS_KEY_ID: test
-  AWS_SECRET_ACCESS_KEY: test
-  AWS_ENDPOINT_URL: http://localstack:4566
 
 x-partition-database-url: &partition-database-url >-
   postgresql+asyncpg://${POSTGRES_USER:-ferry}:${POSTGRES_PASSWORD:-ferry_local}@postgres:5432/${TELEMETRY_DB:-ferry_telemetry}
@@ -63,25 +57,13 @@ services:
       LOG_LEVEL: WARNING
 
   ferry-worker:
-    build:
-      context: ./ferry-central
-      dockerfile: ../docker/dev/central.Dockerfile
     command: ["python", "-m", "src.worker.main"]
-    restart: unless-stopped
     mem_limit: ${PARTITION_WORKER_MEM_LIMIT:-512m}
     depends_on:
       ferry-migrate:
         condition: service_completed_successfully
-      localstack:
-        condition: service_healthy
     environment:
-      <<: *partition-aws
-      DATABASE_URL: *partition-database-url
-      SQS_QUEUE_URL: http://localstack:4566/000000000000/ferry-db-writer-queue
-      SQS_DLQ_URL: http://localstack:4566/000000000000/ferry-db-writer-queue-dlq
       LOG_LEVEL: WARNING
-    volumes:
-      - ./ferry-central:/app
 
   ferry-boat:
     # nest build sem proto:generate: o stub TS versionado é reutilizado e o
@@ -94,3 +76,15 @@ services:
       CENTRAL_GRPC_URL: toxiproxy:50052
       TELEMETRY_INTERVAL_MS: ${PARTITION_TELEMETRY_INTERVAL_MS:-5000}
       NO_COLOR: "1"
+
+  captain-panel:
+    profiles: ["interface"]
+
+  dashboard:
+    profiles: ["interface"]
+
+  nginx-edge:
+    profiles: ["interface"]
+
+  nginx-central:
+    profiles: ["interface"]
