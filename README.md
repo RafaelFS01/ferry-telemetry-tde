@@ -131,11 +131,14 @@ ferry-telemetry-tde/
 ├── docs/                          ---> Especificação arquitetural, CI/CD e roteiro de testes de caos
 │   └── chaos-testing.md           ---> Evidências e comandos de carga até a quebra + Chaos Node Kill
 ├── scripts/
-│   └── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+│   ├── chaos_load_test.py         ---> Gerador gRPC concorrente para saturação e validação Auto Scaling
+│   └── resilience/
+│       └── particao-rede-24h.mjs  ---> Ensaio de partição de 24h (17.280 pacotes) com auditoria no PostgreSQL
 ├── terraform/                     ---> IaC para VPC, ECS Fargate, Auto Scaling, ALB gRPC, RDS e SQS
 │   ├── alarms.tf                  ---> Alarmes CloudWatch (DLQ, erros 5XX no ALB e CPU ECS >= 80%)
 │   └── autoscaling.tf             ---> Target Tracking do ECS (CPU na ingestão e fila SQS no worker)
-└── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+├── docker-compose.local.yml       ---> Orquestração integrada para execução em 1 comando
+└── docker-compose.partition.yml   ---> Sobreposição isolada do ensaio de partição (Toxiproxy + SQS)
 ```
 
 ### Execução do Nó Embarcado (SCRUM-10)
